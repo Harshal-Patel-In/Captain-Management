@@ -2,6 +2,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 
+
+def parse_cors_origins(frontend_url: str) -> list[str]:
+    """Parse comma-separated frontend origins from env."""
+    return [origin.strip() for origin in frontend_url.split(",") if origin.strip()]
+
 # Create FastAPI application
 app = FastAPI(
     title="Inventory Management System",
@@ -9,10 +14,11 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Configure CORS - Allow localhost and network access
+# Configure CORS from FRONTEND_URL (comma-separated list)
+cors_origins = parse_cors_origins(settings.FRONTEND_URL)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for development (localhost + network IPs)
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

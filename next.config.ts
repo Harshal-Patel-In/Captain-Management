@@ -1,5 +1,10 @@
 import type { NextConfig } from "next";
 
+const backendOrigin =
+  process.env.BACKEND_URL ||
+  process.env.NEXT_PUBLIC_BACKEND_URL ||
+  "http://127.0.0.1:8000";
+
 const nextConfig: NextConfig = {
   // Allow access from network IP during development
   // @ts-ignore - Valid config in Next.js 16+ but types might be outdated
@@ -10,7 +15,7 @@ const nextConfig: NextConfig = {
     return [
       {
         source: '/api/:path*',
-        destination: 'http://127.0.0.1:8000/:path*',
+        destination: `${backendOrigin}/:path*`,
       },
     ];
   },

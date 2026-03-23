@@ -1,36 +1,73 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Captain Insecticide
 
-## Getting Started
+Full-stack app:
+- Frontend: Next.js (App Router)
+- Backend: FastAPI
+- Real-time: WebSocket chat (`/management/chat/ws`)
+- Email: SMTP (Gmail-style credentials in env vars)
 
-First, run the development server:
+## Local Development
 
+Frontend:
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Backend:
+```bash
+cd backend
+pip install -r requirements.txt
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Deployment Plan (Recommended)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- Deploy frontend on Vercel
+- Deploy backend on Render
 
-## Learn More
+This repo includes [render.yaml](render.yaml) for Render Blueprint deployment.
 
-To learn more about Next.js, take a look at the following resources:
+## 1) Deploy Backend on Render
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+1. Push this repo to GitHub.
+2. In Render, create service from Blueprint (use [render.yaml](render.yaml)).
+3. Set required env vars in Render:
+	- `DATABASE_URL`
+	- `CLERK_SECRET_KEY`
+	- `FRONTEND_URL`
+	- `SMTP_EMAIL`
+	- `SMTP_APP_PASSWORD`
+	- `SMTP_FROM_NAME` (optional; default already set)
+4. After deploy, copy your backend URL, for example:
+	- `https://captain-insecticide-api.onrender.com`
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+`FRONTEND_URL` can be comma-separated for multiple domains, example:
+```text
+https://your-app.vercel.app,http://localhost:3000
+```
 
-## Deploy on Vercel
+## 2) Deploy Frontend on Vercel
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+1. Import this repo in Vercel.
+2. Set these env vars in Vercel project settings:
+	- `BACKEND_URL=https://captain-insecticide-api.onrender.com`
+	- `NEXT_PUBLIC_BACKEND_URL=https://captain-insecticide-api.onrender.com`
+3. Deploy.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Why both vars:
+- `BACKEND_URL` is used for Next.js server/proxy routing (`/api/*`).
+- `NEXT_PUBLIC_BACKEND_URL` is used by browser WebSocket URL generation.
+
+## 3) Verify After Deployment
+
+1. Open frontend and test normal API pages (products/orders/etc).
+2. Open chat page and verify WebSocket live updates.
+3. Trigger one email flow (order/payment/chat copy) and confirm SMTP delivery.
+
+## Notes on Free Tiers
+
+- SMTP: supported (outbound to your external SMTP provider).
+- WebSocket: supported.
+- Free plans may sleep or have limits; production reliability may need paid tier.
+

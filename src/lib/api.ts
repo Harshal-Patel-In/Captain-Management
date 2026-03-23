@@ -3,19 +3,21 @@ import { ProductsResponse, InventoryResponse, LogsResponse, StockTrendsResponse,
 
 // Dynamic API base URL that works for both localhost and network access
 const getApiBase = () => {
-    // If environment variable is set, use it (for production/custom deployments)
-    if (process.env.NEXT_PUBLIC_BACKEND_URL) {
-        return process.env.NEXT_PUBLIC_BACKEND_URL;
-    }
-
-    // Client-side: use relative "/api" path which Next.js will proxy to backend
-    // This solves all CORS and Network Firewall issues
+    // Client-side: keep requests on /api so Next.js can proxy to backend.
     if (typeof window !== 'undefined') {
         return "/api";
     }
 
-    // Server-side fallback: use localhost
-    return "http://localhost:8000";
+    // Server-side: use explicit backend URL if provided.
+    if (process.env.BACKEND_URL) {
+        return process.env.BACKEND_URL;
+    }
+
+    if (process.env.NEXT_PUBLIC_BACKEND_URL) {
+        return process.env.NEXT_PUBLIC_BACKEND_URL;
+    }
+
+    return "http://127.0.0.1:8000";
 };
 
 const getDirectBackendBase = () => {
