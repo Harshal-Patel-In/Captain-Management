@@ -1,0 +1,15 @@
+--- Unlinked Ecommerce Products (5) ---
+ID: 8a9903f0-8101-4442-b92e-13450af9a40c | Name: 'NitroBoost 20L' | SKU: 'CHEM-001'
+ID: adec1398-6832-4002-81dd-8bc611325ab1 | Name: 'PestControl Pro 1L' | SKU: 'CHEM-002'
+ID: 92fe4b4c-2c96-48be-a05f-b028c132780c | Name: 'RootKing 5kg' | SKU: 'CHEM-003'
+ID: 5edf6d4d-407e-4302-862e-18d020cae322 | Name: 'WeedTerminator 500ml' | SKU: 'CHEM-004'
+ID: 944c059f-1340-4adc-aa28-e76c7d813e87 | Name: 'FungiGuard 1kg' | SKU: 'CHEM-005'
+
+--- Available Source Products (First 10) ---
+ID: 1 | Name: 'HelloNmae' | QR: 'HH001'
+ID: 3 | Name: 'my nmae' | QR: 'HH002'
+ID: 4 | Name: 'ironMan' | QR: 'HH003'
+ID: 5 | Name: 'harshal patel' | QR: 'HP001'
+ID: 21 | Name: 'vo' | QR: 'HHF01'
+ID: 22 | Name: 'spiderman' | QR: 'SP001'
+ID: 23 | Name: 'new product' | QR: 'SP002'

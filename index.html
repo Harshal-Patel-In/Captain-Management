@@ -1,0 +1,1008 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    
+    <title>Captain Insecticide | Perfect Solutions</title>
+    <meta name="description" content="Captain Insecticide. Mastering the art of clever chemistry. Perfect chemical solutions for agriculture. Coming 2026.">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400;0,6..96,500;1,6..96,400&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <!-- Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <style>
+        :root {
+            --bg-base: #f4f1ea;        
+            --text-color: #0b1d15;     
+            --accent-color: #d15638;
+            --blob-gold: #e0c075;      
+            --blob-terra: #e69d72;     
+            --blob-green: #38786a;     
+            --journal-bg: #eaddcf;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            color: var(--text-color);
+            background-color: var(--bg-base);
+            min-height: 100vh;
+            width: 100vw;
+            overflow-x: hidden;
+            display: flex;
+            flex-direction: column;
+            -webkit-font-smoothing: antialiased;
+            cursor: none; 
+            position: relative; 
+        }
+
+        /* --- CURSOR --- */
+        .cursor-dot, .cursor-circle {
+            position: fixed;
+            top: 0;
+            left: 0;
+            border-radius: 50%;
+            z-index: 10001; 
+            pointer-events: none;
+            display: block;
+        }
+        
+        .cursor-dot {
+            width: 6px;
+            height: 6px;
+            background: var(--text-color);
+            opacity: 0.8;
+        }
+        
+        .cursor-circle {
+            width: 40px;
+            height: 40px;
+            border: 1px solid rgba(11, 29, 21, 0.3);
+            transition: border-color 0.3s ease;
+            background: transparent;
+        }
+        
+        body.hovering .cursor-circle {
+            width: 60px;
+            height: 60px;
+            border-color: var(--text-color);
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .touch-ripple {
+            position: absolute; 
+            border: 1px solid var(--text-color);
+            border-radius: 50%;
+            pointer-events: none;
+            transform: translate(-50%, -50%);
+            z-index: 5; 
+            width: 10px;
+            height: 10px;
+        }
+
+        /* --- UI ELEMENTS --- */
+        .preloader {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--text-color);
+            z-index: 10000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--bg-base);
+        }
+        .preloader-text {
+            font-family: 'Bodoni Moda', serif;
+            font-size: 2rem;
+            overflow: hidden;
+        }
+        .preloader-text span {
+            display: inline-block;
+            transform: translateY(100%);
+        }
+
+        .grain {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            z-index: 90;
+            opacity: 0.05;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+        }
+
+        /* --- WEBGL BACKGROUND --- */
+        #canvas-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        .hud-mark {
+            position: fixed;
+            color: var(--text-color);
+            font-family: 'Inter', sans-serif;
+            font-size: 0.6rem;
+            font-weight: 600;
+            letter-spacing: 0.1em;
+            z-index: 50;
+            opacity: 0.4;
+            pointer-events: none;
+        }
+        
+        .bl { bottom: 1.8rem; left: 3.5rem; }
+        .br { bottom: 1.8rem; right: 3.5rem; text-align: right;}
+        
+        .crosshair {
+            position: fixed;
+            width: 20px;
+            height: 20px;
+            pointer-events: none;
+            z-index: 40;
+        }
+        .crosshair::before, .crosshair::after {
+            content: '';
+            position: absolute;
+            background: var(--text-color);
+            opacity: 0.3;
+        }
+        .crosshair::before { top: 9px; left: 0; width: 100%; height: 1px; }
+        .crosshair::after { left: 9px; top: 0; height: 100%; width: 1px; }
+        .c-bl { bottom: 2rem; left: 2rem; }
+        .c-br { bottom: 2rem; right: 2rem; }
+
+        /* --- WRAPPER & HEADER --- */
+        .wrapper {
+            position: relative;
+            z-index: 10; 
+            width: 100%;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            padding: 2.5rem 5vw;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start; /* Changed to flex-start for vertical alignment */
+            height: auto;
+            min-height: 80px;
+            width: 100%;
+            position: relative;
+            z-index: 20; 
+        }
+        
+        .brand-container {
+            display: flex;
+            flex-direction: column; /* Stacks Logo and Text vertically */
+            align-items: flex-start; /* Aligns them to the left */
+            gap: 1rem;
+        }
+
+        .magnet-area {
+            padding: 10px; 
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .logo-icon {
+            width: 48px;
+            height: 48px;
+            border: 1px solid var(--text-color);
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: transform 0.3s ease;
+        }
+
+        .brand-text {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.75rem;
+            font-weight: 700;
+            line-height: 1.4;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            opacity: 0.9;
+            padding-left: 5px; /* Slight offset to align with logo visual center */
+        }
+
+        .nav-links {
+            display: flex;
+            flex-direction: column; /* Stacks links vertically (Sidebar style) */
+            align-items: flex-end; /* Aligns them to the right */
+            gap: 0.2rem; 
+        }
+
+        .nav-item {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+            color: var(--text-color);
+            text-decoration: none;
+            position: relative;
+            padding: 8px 0; /* Reduced horizontal padding for list view */
+            display: inline-block;
+        }
+        
+        .nav-text {
+            position: relative;
+        }
+        .nav-text::after {
+            content: '';
+            position: absolute;
+            bottom: -4px;
+            left: 0;
+            width: 0%;
+            height: 1px;
+            background: var(--text-color);
+            transition: width 0.3s ease;
+        }
+        .nav-item:hover .nav-text::after {
+            width: 100%;
+        }
+
+        /* --- HERO --- */
+        .hero {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            perspective: 1000px;
+            width: 100%;
+            will-change: transform;
+        }
+
+        .tilt-container {
+            text-align: center;
+            transform-style: preserve-3d;
+            transition: transform 0.1s ease-out;
+            width: 100%;
+        }
+
+        .hero h1 {
+            font-family: 'Bodoni Moda', serif;
+            font-size: 13vw;
+            line-height: 0.85;
+            font-weight: 400;
+            letter-spacing: -0.04em;
+            white-space: nowrap;
+        }
+
+        .line-1 {
+            display: block;
+            color: var(--text-color);
+            transform: translateZ(40px);
+        }
+        
+        .line-2 {
+            display: block;
+            color: transparent;
+            -webkit-text-stroke: 1px var(--text-color);
+            font-style: italic;
+            transform: translateZ(10px);
+        }
+
+        footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            padding-bottom: 2rem;
+            width: 100%;
+        }
+
+        .manifesto {
+            max-width: 380px;
+            font-size: 0.9rem;
+            line-height: 1.6;
+            font-weight: 500;
+            text-align: left;
+        }
+
+        .notify-wrap {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            width: 300px;
+        }
+
+        .input-group {
+            position: relative;
+            display: flex;
+            border-bottom: 1px solid var(--text-color);
+            padding-bottom: 5px;
+            align-items: center;
+            transition: border-color 0.4s ease;
+        }
+
+        input {
+            width: 100%;
+            background: none;
+            border: none;
+            outline: none;
+            font-family: 'Bodoni Moda', serif;
+            font-size: 1.2rem;
+            color: var(--text-color);
+            opacity: 1;
+        }
+
+        button {
+            background: none;
+            border: none;
+            color: var(--text-color);
+            cursor: pointer;
+            padding: 5px;
+            transform-origin: center;
+        }
+
+        /* --- JOURNAL PANEL --- */
+        .journal-overlay {
+            position: fixed;
+            top: 0;
+            right: 0;
+            width: 50vw;
+            height: 100vh;
+            background: var(--journal-bg);
+            z-index: 100; /* Above wrapper, below cursor */
+            transform: translateX(101%);
+            border-left: 1px solid rgba(11, 29, 21, 0.1);
+            display: flex;
+            flex-direction: column;
+            will-change: transform;
+            box-shadow: -20px 0 50px rgba(0,0,0,0.05);
+        }
+
+        .journal-header {
+            padding: 3rem 4rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(11, 29, 21, 0.1);
+        }
+
+        .journal-title {
+            font-family: 'Bodoni Moda', serif;
+            font-size: 2rem;
+            font-style: italic;
+        }
+
+        .close-btn {
+            background: none;
+            border: 1px solid var(--text-color);
+            border-radius: 50%;
+            width: 48px;
+            height: 48px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 0;
+            cursor: none;
+            color: var(--text-color);
+            transition: transform 0.3s ease, background 0.3s ease;
+        }
+        
+        .close-btn:hover {
+            background: var(--text-color);
+            color: var(--bg-base);
+            transform: rotate(90deg);
+        }
+
+        .journal-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 4rem;
+            padding-bottom: 8rem;
+            scrollbar-width: none; 
+            -ms-overflow-style: none;
+        }
+        .journal-content::-webkit-scrollbar { 
+            display: none; 
+        }
+
+        .article {
+            margin-bottom: 5rem;
+            opacity: 0;
+            transform: translateY(30px);
+        }
+
+        .article-meta {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+            margin-bottom: 1rem;
+            opacity: 0.6;
+            display: block;
+        }
+
+        .article h2 {
+            font-family: 'Bodoni Moda', serif;
+            font-size: 3rem;
+            line-height: 1.1;
+            margin-bottom: 2rem;
+            font-weight: 400;
+        }
+
+        .article p {
+            font-family: 'Inter', sans-serif;
+            font-size: 1rem;
+            line-height: 1.8;
+            margin-bottom: 1.5rem;
+            max-width: 90%;
+            font-weight: 300;
+        }
+
+        .article-divider {
+            width: 100px;
+            height: 1px;
+            background: var(--text-color);
+            margin: 3rem 0;
+            opacity: 0.2;
+        }
+
+        /* --- MOBILE --- */
+        @media (hover: none) and (pointer: coarse), (max-width: 1024px) {
+            body { cursor: auto; overflow: auto; }
+            .cursor-dot, .cursor-circle { display: none !important; }
+            
+            .wrapper { padding: 1.5rem 5vw; height: auto; display: block; }
+            
+            header { 
+                margin-bottom: 3rem;
+                flex-wrap: nowrap; /* Prevent wrapping so sidebars stay put */
+                gap: 1rem;
+                align-items: flex-start;
+            }
+
+            .brand-text { display: block; font-size: 0.7rem; } 
+            
+            .nav-links { 
+                width: auto;
+                margin-left: auto; 
+                /* Keep vertical sidebar style on mobile too */
+                align-items: flex-end;
+            }
+            .nav-item { 
+                font-size: 0.7rem; 
+                padding: 5px 0; 
+            }
+
+            .hero { 
+                min-height: 50vh; 
+                align-items: center; 
+                margin-bottom: 3rem;
+            }
+            
+            .hero h1 { 
+                font-size: 18vw; 
+                white-space: normal; 
+                line-height: 0.9;
+            }
+
+            .line-1, .line-2 { transform: none !important; }
+            .tilt-container { transform: none !important; }
+
+            footer { 
+                flex-direction: column; 
+                align-items: flex-start; 
+                gap: 3rem; 
+            }
+            
+            .manifesto, .notify-wrap { width: 100%; max-width: 100%; }
+
+            .crosshair { display: none; }
+            .hud-mark { display: none; }
+            
+            .journal-overlay {
+                width: 100vw;
+            }
+            .journal-header { padding: 1.5rem; }
+            .journal-content { padding: 2rem 1.5rem; }
+            .article h2 { font-size: 2.2rem; }
+        }
+    </style>
+
+    <!-- FLUID SHADER SCRIPTS -->
+    <script id="vertexShader" type="x-shader/x-vertex">
+        varying vec2 vUv;
+        void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    </script>
+
+    <script id="fragmentShader" type="x-shader/x-fragment">
+        uniform float uTime;
+        uniform vec2 uResolution;
+        varying vec2 vUv;
+
+        // Simplex Noise Function
+        vec3 permute(vec3 x) { return mod(((x*34.0)+1.0)*x, 289.0); }
+        float snoise(vec2 v){
+            const vec4 C = vec4(0.211324865405187, 0.366025403784439, -0.577350269189626, 0.024390243902439);
+            vec2 i  = floor(v + dot(v, C.yy) );
+            vec2 x0 = v -   i + dot(i, C.xx);
+            vec2 i1;
+            i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+            vec4 x12 = x0.xyxy + C.xxzz;
+            x12.xy -= i1;
+            i = mod(i, 289.0);
+            vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 )) + i.x + vec3(0.0, i1.x, 1.0 ));
+            vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
+            m = m*m ;
+            m = m*m ;
+            vec3 x = 2.0 * fract(p * C.www) - 1.0;
+            vec3 h = abs(x) - 0.5;
+            vec3 ox = floor(x + 0.5);
+            vec3 a0 = x - ox;
+            m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h );
+            vec3 g;
+            g.x  = a0.x  * x0.x  + h.x  * x0.y;
+            g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+            return 130.0 * dot(m, g);
+        }
+
+        void main() {
+            vec2 uv = vUv;
+            
+            // Slow, organic movement
+            float time = uTime * 0.15; 
+            
+            // Create organic distortion
+            float noise1 = snoise(uv * 1.5 + time);
+            float noise2 = snoise(uv * 2.5 - time * 0.5);
+            
+            // Base colors
+            vec3 colorBg = vec3(0.957, 0.945, 0.918); // #f4f1ea
+            vec3 color1 = vec3(0.878, 0.753, 0.459);  // #e0c075
+            vec3 color2 = vec3(0.902, 0.616, 0.447);  // #e69d72
+            vec3 color3 = vec3(0.22, 0.471, 0.416);   // #38786a
+
+            // Mix logic
+            float mix1 = smoothstep(0.2, 0.8, noise1);
+            float mix2 = smoothstep(0.3, 0.9, noise2 + noise1 * 0.5);
+            
+            vec3 finalColor = mix(colorBg, color1, mix1 * 0.4);
+            finalColor = mix(finalColor, color2, mix2 * 0.3);
+            
+            // Green spots
+            float spot = smoothstep(0.4, 0.6, snoise(uv * 3.0 + time * 1.2));
+            finalColor = mix(finalColor, color3, spot * 0.2);
+
+            gl_FragColor = vec4(finalColor, 1.0);
+        }
+    </script>
+</head>
+<body>
+    
+    <div class="cursor-dot"></div>
+    <div class="cursor-circle"></div>
+
+    <div class="preloader">
+        <div class="preloader-text">
+            <span>CAPTAIN</span>
+        </div>
+    </div>
+
+    <div class="hud-mark bl">LAT: 34.0522<br>LON: -118.2437</div>
+    <div class="hud-mark br">SCROLL TO EXPLORE<br>ENCRYPTED</div>
+
+    <div class="crosshair c-bl"></div>
+    <div class="crosshair c-br"></div>
+
+    <div class="grain"></div>
+
+    <!-- WebGL Background -->
+    <div id="canvas-container"></div>
+
+    <div class="wrapper">
+        <header>
+            <div class="brand-container">
+                <div class="logo-wrap magnet-area">
+                    <div class="logo-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="var(--text-color)">
+                            <path d="M12 2L3 7V13C3 18.5 7 22 12 24C17 22 21 18.5 21 13V7L12 2ZM12 20C9.5 19 6 16.5 5.2 13H18.8C18 16.5 14.5 19 12 20Z" fill="none" stroke="currentColor" stroke-width="2"/>
+                            <path d="M12 6L8 8V11H16V8L12 6Z" fill="currentColor" opacity="0.6"/>
+                        </svg>
+                    </div>
+                </div>
+                <div class="brand-text">
+                    Captain<br>Insecticide<br>&copy;2025
+                </div>
+            </div>
+            
+            <nav class="nav-links">
+                <a href="#" id="journal-trigger" class="nav-item magnet-area"><span class="nav-text">Journal</span></a>
+                <a href="#" class="nav-item magnet-area"><span class="nav-text">Instagram</span></a>
+                <a href="#" class="nav-item magnet-area"><span class="nav-text">Twitter</span></a>
+            </nav>
+        </header>
+
+        <section class="hero">
+            <div class="tilt-container">
+                <h1 class="line-1">Coming</h1>
+                <h1 class="line-2">2026</h1>
+            </div>
+        </section>
+
+        <footer>
+            <div class="manifesto">
+                Precision chemistry. Calculated protection. Captain Insecticide formulates the perfect chemical solutions for a pest-free harvest. This is clever chemistry.
+            </div>
+
+            <div class="notify-wrap">
+                <form id="notifyForm">
+                    <div class="input-group">
+                        <input type="email" placeholder="Notify me" required>
+                        <button type="submit" class="magnet-area">
+                            <i data-lucide="arrow-right"></i>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </footer>
+    </div>
+
+    <!-- JOURNAL OVERLAY -->
+    <div class="journal-overlay">
+        <div class="journal-header">
+            <span class="journal-title">Field Notes</span>
+            <button class="close-btn magnet-area">
+                <i data-lucide="x"></i>
+            </button>
+        </div>
+        <div class="journal-content">
+            <article class="article">
+                <span class="article-meta">01 — Philosophy</span>
+                <h2>Clever Chemistry</h2>
+                <p>
+                    For too long, agricultural protection has been a blunt instrument. We believe in the scalpel. Captain Insecticide represents a paradigm shift from volume to precision. Our laboratories focus on the molecular interaction between pest and deterrent, ensuring maximum efficacy with minimal environmental footprint.
+                </p>
+                <p>
+                    By synthesizing perfect chemical solutions, we eliminate the guesswork. We don't just protect crops; we engineer the future of yield security using advanced synthetic formulations that degrade harmlessly after their mission is complete.
+                </p>
+                <div class="article-divider"></div>
+            </article>
+
+            <article class="article">
+                <span class="article-meta">02 — Innovation</span>
+                <h2>Synthetic Elegance</h2>
+                <p>
+                    Nature is chaotic; chemistry is order. Our flagship compounds are designed with an algorithmic approach to molecular bonding. The result is a product that is ruthless to pests but benign to the crop.
+                </p>
+                <p>
+                    We call this "The Perfect Solution." It is not merely a slogan. It is the result of thousands of hours of titration, observation, and refinement. Welcome to the new era of calculated growth.
+                </p>
+                <div class="article-divider"></div>
+            </article>
+            
+            <article class="article">
+                <span class="article-meta">03 — Roadmap</span>
+                <h2>2026 Deployment</h2>
+                <p>
+                    Field trials across the Midwest have yielded data exceeding our 98th percentile projections. The infrastructure for mass synthesis is currently being finalized.
+                </p>
+            </article>
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+
+        const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+
+        /* --- PRELOADER & HERO ANIMATION --- */
+        const tl = gsap.timeline();
+        
+        tl.to(".preloader-text span", {
+            y: "0%",
+            duration: 1,
+            ease: "power4.out",
+            delay: 0.2
+        })
+        .to(".preloader", {
+            y: "-100%",
+            duration: 1.2,
+            ease: "expo.inOut",
+            delay: 0.5
+        })
+        .from(".tilt-container h1", {
+            y: 100,
+            opacity: 0,
+            duration: 1,
+            stagger: 0.2,
+            ease: "power3.out"
+        }, "-=0.8");
+
+        /* --- THREE.JS BACKGROUND --- */
+        function initFluidBackground() {
+            // REMOVED THE TOUCH CHECK so it loads everywhere
+            
+            const container = document.getElementById('canvas-container');
+            const scene = new THREE.Scene();
+            const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+            const renderer = new THREE.WebGLRenderer({ alpha: true });
+            
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            container.appendChild(renderer.domElement);
+
+            const geometry = new THREE.PlaneGeometry(2, 2);
+            const uniforms = {
+                uTime: { value: 0 },
+                uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+            };
+
+            const material = new THREE.ShaderMaterial({
+                uniforms: uniforms,
+                vertexShader: document.getElementById('vertexShader').textContent,
+                fragmentShader: document.getElementById('fragmentShader').textContent,
+            });
+
+            const mesh = new THREE.Mesh(geometry, material);
+            scene.add(mesh);
+
+            function animate(time) {
+                requestAnimationFrame(animate);
+                uniforms.uTime.value = time * 0.001;
+                renderer.render(scene, camera);
+            }
+            animate(0);
+
+            window.addEventListener('resize', () => {
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
+            });
+        }
+        
+        // Initialize immediately
+        initFluidBackground();
+
+        /* --- INTERACTION LOGIC --- */
+        window.addEventListener('touchstart', (e) => {
+            const touch = e.touches[0];
+            createRipple(touch.pageX, touch.pageY);
+        }, {passive: true});
+
+        function createRipple(x, y) {
+            const ripple = document.createElement('div');
+            ripple.classList.add('touch-ripple');
+            ripple.style.left = x + 'px';
+            ripple.style.top = y + 'px';
+            document.body.appendChild(ripple);
+            
+            gsap.to(ripple, {
+                scale: 6,      
+                opacity: 0,
+                duration: 0.8,
+                ease: "power1.out",
+                onComplete: () => ripple.remove()
+            });
+        }
+
+        /* --- SCROLL SKEW (TOUCH) --- */
+        if (isTouch) {
+            let lastScrollTop = 0;
+            let skewTween;
+            
+            window.addEventListener('scroll', () => {
+                const st = window.scrollY;
+                const velocity = st - lastScrollTop;
+                lastScrollTop = st;
+                
+                const skewAmount = Math.min(Math.max(velocity * 0.1, -4), 4);
+                
+                if (skewTween) skewTween.kill();
+                skewTween = gsap.to('.hero h1', {
+                    skewY: skewAmount,
+                    duration: 0.3,
+                    ease: "power2.out",
+                    overwrite: "auto"
+                });
+                
+                gsap.to('.hero h1', {
+                    skewY: 0,
+                    duration: 0.5,
+                    delay: 0.1,
+                    ease: "power2.out",
+                    overwrite: "auto"
+                });
+            }, {passive: true});
+        }
+
+        /* --- DESKTOP CURSOR & TILT --- */
+        if (!isTouch || window.matchMedia("(pointer: fine)").matches) {
+            const cursorDot = document.querySelector('.cursor-dot');
+            const cursorCircle = document.querySelector('.cursor-circle');
+            
+            // Initial center set
+            gsap.set([cursorDot, cursorCircle], {xPercent: -50, yPercent: -50});
+            
+            let mouseX = 0, mouseY = 0;
+            let cursorX = 0, cursorY = 0;
+
+            document.addEventListener('mousemove', (e) => {
+                mouseX = e.clientX;
+                mouseY = e.clientY;
+                gsap.set(cursorDot, { x: mouseX, y: mouseY });
+                
+                const centerX = window.innerWidth / 2;
+                const centerY = window.innerHeight / 2;
+                const rotateX = ((mouseY - centerY) / centerY) * -8;
+                const rotateY = ((mouseX - centerX) / centerX) * 8;
+                
+                // Only tilt if journal is closed
+                if(!document.body.classList.contains('journal-open')){
+                    gsap.to(".tilt-container", {
+                        rotateX: rotateX,
+                        rotateY: rotateY,
+                        duration: 1,
+                        ease: "power2.out"
+                    });
+                }
+            });
+
+            function animateCursor() {
+                cursorX += (mouseX - cursorX) * 0.15;
+                cursorY += (mouseY - cursorY) * 0.15;
+                gsap.set(cursorCircle, { x: cursorX, y: cursorY });
+                requestAnimationFrame(animateCursor);
+            }
+            animateCursor();
+
+            function bindMagnets() {
+                const magnets = document.querySelectorAll('.magnet-area');
+                magnets.forEach(magnet => {
+                    magnet.onmouseenter = () => {
+                        document.body.classList.add('hovering');
+                        gsap.to(cursorCircle, { width: 60, height: 60, duration: 0.3 });
+                    };
+                    
+                    magnet.onmouseleave = () => {
+                        document.body.classList.remove('hovering');
+                        gsap.to(cursorCircle, { width: 40, height: 40, duration: 0.3 });
+                        gsap.to(magnet, { x: 0, y: 0, duration: 0.5, ease: "elastic.out(1, 0.3)" });
+                    };
+
+                    magnet.onmousemove = (e) => {
+                        const rect = magnet.getBoundingClientRect();
+                        const centerX = rect.left + rect.width / 2;
+                        const centerY = rect.top + rect.height / 2;
+                        
+                        const moveX = (e.clientX - centerX) * 0.3;
+                        const moveY = (e.clientY - centerY) * 0.3;
+                        
+                        gsap.to(magnet, { x: moveX, y: moveY, duration: 0.3 });
+                    };
+                });
+            }
+            bindMagnets();
+        }
+
+        /* --- JOURNAL LOGIC --- */
+        const journalTrigger = document.getElementById('journal-trigger');
+        const journalOverlay = document.querySelector('.journal-overlay');
+        const closeBtn = document.querySelector('.close-btn');
+        const articles = document.querySelectorAll('.article');
+        const wrapper = document.querySelector('.wrapper');
+
+        let isJournalOpen = false;
+
+        journalTrigger.addEventListener('click', (e) => {
+            e.preventDefault();
+            if(isJournalOpen) return;
+            openJournal();
+        });
+
+        closeBtn.addEventListener('click', () => {
+            closeJournal();
+        });
+
+        function openJournal() {
+            isJournalOpen = true;
+            document.body.classList.add('journal-open');
+
+            gsap.to(journalOverlay, {
+                x: "0%",
+                duration: 1.2,
+                ease: "expo.inOut"
+            });
+
+            gsap.to(wrapper, {
+                x: "-10%",
+                scale: 0.95,
+                opacity: 0.3,
+                filter: "blur(2px)",
+                duration: 1.2,
+                ease: "expo.inOut"
+            });
+
+            gsap.fromTo(articles, 
+                { y: 50, opacity: 0 },
+                { y: 0, opacity: 1, duration: 0.8, stagger: 0.1, delay: 0.4, ease: "power3.out" }
+            );
+        }
+
+        function closeJournal() {
+            isJournalOpen = false;
+            document.body.classList.remove('journal-open');
+
+            gsap.to(journalOverlay, {
+                x: "101%",
+                duration: 1,
+                ease: "expo.inOut"
+            });
+
+            gsap.to(wrapper, {
+                x: "0%",
+                scale: 1,
+                opacity: 1,
+                filter: "blur(0px)",
+                duration: 1,
+                ease: "expo.inOut"
+            });
+        }
+
+        /* --- NOTIFY FORM --- */
+        const form = document.getElementById('notifyForm');
+        const input = form.querySelector('input');
+        const btn = form.querySelector('button');
+        const inputGroup = form.querySelector('.input-group');
+
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            
+            input.disabled = true;
+            btn.disabled = true;
+
+            gsap.to(btn, { 
+                rotation: 720, 
+                duration: 1.2, 
+                ease: "expo.inOut",
+                onComplete: () => {
+                    btn.innerHTML = '<i data-lucide="check"></i>';
+                    lucide.createIcons();
+                    
+                    gsap.to(input, {
+                        y: -20,
+                        opacity: 0,
+                        duration: 0.4,
+                        ease: "power2.in",
+                        onComplete: () => {
+                            input.value = "We will be in touch.";
+                            input.style.fontStyle = "italic";
+                            input.style.opacity = 0; 
+                            
+                            gsap.fromTo(input, 
+                                { y: 20, opacity: 0 },
+                                { y: 0, opacity: 1, duration: 0.5, ease: "power2.out" }
+                            );
+
+                            gsap.fromTo(inputGroup, 
+                                { borderBottomColor: "var(--text-color)" },
+                                { borderBottomColor: "rgba(11, 29, 21, 0.3)", duration: 0.8, ease: "power2.out" }
+                            );
+                        }
+                    });
+                }
+            });
+        });
+
+    </script>
+</body>
+</html>
