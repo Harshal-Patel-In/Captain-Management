@@ -4,24 +4,39 @@ import glob
 import os
 import subprocess
 import tempfile
+from functools import lru_cache
 from datetime import datetime
 from sqlalchemy.orm import Session
 
 
 def _find_chromium() -> str:
     """Find Chromium binary installed by Playwright."""
+    # Optional explicit override for container/runtime environments.
+    override = os.getenv("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH", "").strip()
+    if override and os.path.exists(override):
+        return override
+
     patterns = [
         os.path.expanduser("~/AppData/Local/ms-playwright/chromium-*/chrome-win64/chrome.exe"),
         os.path.expanduser("~/AppData/Local/ms-playwright/chromium_headless_shell-*/chrome-headless-shell-win64/chrome-headless-shell.exe"),
+        os.path.expanduser("~/.cache/ms-playwright/chromium-*/chrome-linux/chrome"),
+        os.path.expanduser("~/.cache/ms-playwright/chromium_headless_shell-*/chrome-linux/headless_shell"),
+        "/opt/render/.cache/ms-playwright/chromium-*/chrome-linux/chrome",
+        "/opt/render/.cache/ms-playwright/chromium_headless_shell-*/chrome-linux/headless_shell",
     ]
     for pat in patterns:
         hits = glob.glob(pat)
         if hits:
             return hits[-1]
-    raise FileNotFoundError("Chromium not found. Run: python -m playwright install chromium")
+    raise FileNotFoundError(
+        "Chromium not found. Install it with: python -m playwright install chromium"
+    )
 
 
-_CHROMIUM = _find_chromium()
+@lru_cache(maxsize=1)
+def _get_chromium() -> str:
+    """Resolve Chromium lazily so app startup does not fail on import."""
+    return _find_chromium()
 
 # ── Logo as base64 data URI (3 levels up from backend/app/services/ → project root) ──
 _LOGO_PATH = os.path.normpath(
@@ -519,7 +534,7 @@ def generate_bill_pdf(order, db: Session) -> bytes:
 
         subprocess.run(
             [
-                _CHROMIUM,
+                _get_chromium(),
                 "--headless=new",
                 "--disable-gpu",
                 "--no-sandbox",
