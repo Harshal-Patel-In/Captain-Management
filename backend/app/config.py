@@ -14,8 +14,8 @@ class Settings(BaseSettings):
     # CORS
     FRONTEND_URL: str = "http://localhost:3000"
     
-    # Clerk Authentication
-    CLERK_SECRET_KEY: str
+    # Clerk Authentication (optional unless Clerk-backed routes are enabled)
+    CLERK_SECRET_KEY: str = ""
     
     # SMTP for email notifications
     SMTP_EMAIL: str = ""
