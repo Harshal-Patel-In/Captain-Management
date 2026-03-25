@@ -10,9 +10,9 @@ class StockLogResponse(BaseModel):
     product_id: int
     product_name: str
     action: StockAction
-    quantity: int
-    previous_quantity: int
-    new_quantity: int
+    quantity: float
+    previous_quantity: float
+    new_quantity: float
     timestamp: datetime
     remarks: Optional[str]
     
