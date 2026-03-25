@@ -22,6 +22,8 @@ class InventoryService:
             Product.name.label('product_name'),
             Product.category,
             Product.qr_code_value,
+            Product.unit_type,
+            Product.unit_label,
             Inventory.quantity,
             Inventory.last_updated
         ).join(Product, Inventory.product_id == Product.id)
@@ -46,6 +48,8 @@ class InventoryService:
                 "product_name": row.product_name,
                 "category": row.category,
                 "qr_code_value": row.qr_code_value,
+                "unit_type": row.unit_type,
+                "unit_label": row.unit_label,
                 "quantity": row.quantity,
                 "last_updated": row.last_updated
             }
@@ -62,6 +66,8 @@ class InventoryService:
             Product.name.label('product_name'),
             Product.category,
             Product.qr_code_value,
+            Product.unit_type,
+            Product.unit_label,
             Inventory.quantity,
             Inventory.last_updated
         ).join(Product, Inventory.product_id == Product.id
@@ -75,6 +81,8 @@ class InventoryService:
             "product_name": result.product_name,
             "category": result.category,
             "qr_code_value": result.qr_code_value,
+            "unit_type": result.unit_type,
+            "unit_label": result.unit_label,
             "quantity": result.quantity,
             "last_updated": result.last_updated
         }

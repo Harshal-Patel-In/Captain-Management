@@ -15,6 +15,8 @@ export interface InventoryItem {
     product_name: string;
     category: string | null;
     qr_code_value: string;
+    unit_type: "piece" | "volume" | "mass";
+    unit_label: "pcs" | "L" | "ml" | "Kg";
     quantity: number;
     last_updated: string;
 }

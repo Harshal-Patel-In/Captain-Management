@@ -1,6 +1,7 @@
 from pydantic import BaseModel
 from datetime import datetime
 from typing import Optional
+from app.models.product import UnitType, UnitLabel
 
 
 class InventoryItem(BaseModel):
@@ -9,7 +10,9 @@ class InventoryItem(BaseModel):
     product_name: str
     category: Optional[str]
     qr_code_value: str
-    quantity: int
+    unit_type: UnitType
+    unit_label: UnitLabel
+    quantity: float
     last_updated: datetime
     
     class Config:

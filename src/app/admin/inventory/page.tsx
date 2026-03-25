@@ -7,15 +7,23 @@ import { PageTransition } from "@/components/layout/PageTransition";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api } from "@/lib/api";
 import { InventoryItem } from "@/lib/types";
-import { Download, Search } from "lucide-react";
+import { Download, Loader2, Plus, Search } from "lucide-react";
 
 export default function InventoryPage() {
     const [inventory, setInventory] = useState<InventoryItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState("");
+    const [stockInDialogOpen, setStockInDialogOpen] = useState(false);
+    const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
+    const [stockInQuantity, setStockInQuantity] = useState<number | string>(1);
+    const [stockInRemarks, setStockInRemarks] = useState("");
+    const [stockInLoading, setStockInLoading] = useState(false);
+    const [stockInMessage, setStockInMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
     useEffect(() => {
         loadInventory();
@@ -35,6 +43,59 @@ export default function InventoryPage() {
 
     const handleExport = () => {
         window.open(api.getInventoryCSVUrl(), "_blank");
+    };
+
+    const handleOpenStockInDialog = (item: InventoryItem) => {
+        setSelectedItem(item);
+        setStockInQuantity(1);
+        setStockInRemarks("");
+        setStockInMessage(null);
+        setStockInDialogOpen(true);
+    };
+
+    const handleCloseStockInDialog = () => {
+        setStockInDialogOpen(false);
+        setSelectedItem(null);
+        setStockInQuantity(1);
+        setStockInRemarks("");
+        setStockInMessage(null);
+    };
+
+    const handleManualStockIn = async () => {
+        if (!selectedItem) return;
+
+        const quantity = Number(stockInQuantity);
+        if (!quantity || quantity <= 0) {
+            setStockInMessage({ type: "error", text: "Please enter a valid quantity." });
+            return;
+        }
+
+        if (selectedItem.unit_type === "piece" && !Number.isInteger(quantity)) {
+            setStockInMessage({ type: "error", text: "This product accepts whole numbers only." });
+            return;
+        }
+
+        setStockInLoading(true);
+        setStockInMessage(null);
+        try {
+            await api.stockIn({
+                qr_code_value: selectedItem.qr_code_value,
+                quantity,
+                remarks: stockInRemarks || undefined,
+            });
+            setStockInMessage({
+                type: "success",
+                text: `${selectedItem.product_name} stocked in by ${quantity}.`,
+            });
+            await loadInventory();
+            setTimeout(() => {
+                handleCloseStockInDialog();
+            }, 800);
+        } catch (err: any) {
+            setStockInMessage({ type: "error", text: err.message || "Failed to stock in product." });
+        } finally {
+            setStockInLoading(false);
+        }
     };
 
     return (
@@ -88,7 +149,7 @@ export default function InventoryPage() {
                                                         </div>
                                                         <div className="text-right">
                                                             <div className={`text-xl font-bold ${item.quantity < 5 ? "text-orange-600" : "text-[#0b1d15]"}`}>
-                                                                {item.quantity}
+                                                                {item.quantity} {item.unit_label}
                                                             </div>
                                                             <div className="text-xs text-gray-400">in stock</div>
                                                         </div>
@@ -96,6 +157,16 @@ export default function InventoryPage() {
                                                     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
                                                         <span className="font-mono">{item.qr_code_value}</span>
                                                         <span>{new Date(item.last_updated).toLocaleString()}</span>
+                                                    </div>
+                                                    <div className="mt-3">
+                                                        <Button
+                                                            size="sm"
+                                                            className="w-full gap-2"
+                                                            onClick={() => handleOpenStockInDialog(item)}
+                                                        >
+                                                            <Plus className="h-4 w-4" />
+                                                            Stock In
+                                                        </Button>
                                                     </div>
                                                 </div>
                                             ))}
@@ -110,6 +181,7 @@ export default function InventoryPage() {
                                                 <TableHead>QR Code</TableHead>
                                                 <TableHead className="text-right">Quantity</TableHead>
                                                 <TableHead>Last Updated</TableHead>
+                                                <TableHead className="text-right">Actions</TableHead>
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
@@ -120,10 +192,20 @@ export default function InventoryPage() {
                                                     <TableCell className="font-mono text-sm">{item.qr_code_value}</TableCell>
                                                     <TableCell className="text-right font-bold">
                                                         <span className={item.quantity < 5 ? "text-orange-600" : ""}>
-                                                            {item.quantity}
+                                                            {item.quantity} <span className="text-sm text-gray-600">{item.unit_label}</span>
                                                         </span>
                                                     </TableCell>
                                                     <TableCell>{new Date(item.last_updated).toLocaleString()}</TableCell>
+                                                    <TableCell className="text-right">
+                                                        <Button
+                                                            size="sm"
+                                                            className="gap-2"
+                                                            onClick={() => handleOpenStockInDialog(item)}
+                                                        >
+                                                            <Plus className="h-4 w-4" />
+                                                            Stock In
+                                                        </Button>
+                                                    </TableCell>
                                                 </TableRow>
                                             ))}
                                         </TableBody>
@@ -133,6 +215,70 @@ export default function InventoryPage() {
                                 )}
                             </CardContent>
                         </Card>
+
+                        <Dialog open={stockInDialogOpen} onOpenChange={(open) => (open ? setStockInDialogOpen(true) : handleCloseStockInDialog())}>
+                            <DialogContent>
+                                <DialogHeader>
+                                    <DialogTitle>Manual Stock In</DialogTitle>
+                                    <DialogDescription>
+                                        Add stock for {selectedItem?.product_name || "selected product"}.
+                                    </DialogDescription>
+                                </DialogHeader>
+                                <div className="space-y-4">
+                                    <div>
+                                        <Label htmlFor="stock-in-quantity">
+                                            Quantity ({selectedItem?.unit_label || "unit"})
+                                        </Label>
+                                        <Input
+                                            id="stock-in-quantity"
+                                            type="number"
+                                            min={selectedItem?.unit_type === "piece" ? "1" : "0.01"}
+                                            step={selectedItem?.unit_type === "piece" ? "1" : "0.01"}
+                                            value={stockInQuantity}
+                                            onChange={(e) => setStockInQuantity(e.target.value)}
+                                        />
+                                        {selectedItem?.unit_type === "piece" && (
+                                            <p className="mt-1 text-xs text-gray-500">Whole numbers only for piece-based products.</p>
+                                        )}
+                                    </div>
+                                    <div>
+                                        <Label htmlFor="stock-in-remarks">Remarks (Optional)</Label>
+                                        <textarea
+                                            id="stock-in-remarks"
+                                            className="flex min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                            placeholder="Optional notes (max 500 characters)"
+                                            value={stockInRemarks}
+                                            onChange={(e) => setStockInRemarks(e.target.value.slice(0, 500))}
+                                            maxLength={500}
+                                        />
+                                    </div>
+                                    {stockInMessage && (
+                                        <div className={`rounded-md border px-3 py-2 text-sm ${stockInMessage.type === "success" ? "border-green-200 bg-green-50 text-green-800" : "border-red-200 bg-red-50 text-red-700"}`}>
+                                            {stockInMessage.text}
+                                        </div>
+                                    )}
+                                    <div className="flex justify-end gap-2">
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={handleCloseStockInDialog}
+                                            disabled={stockInLoading}
+                                        >
+                                            Cancel
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            onClick={handleManualStockIn}
+                                            disabled={stockInLoading || !selectedItem}
+                                            className="gap-2"
+                                        >
+                                            {stockInLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                                            Stock In
+                                        </Button>
+                                    </div>
+                                </div>
+                            </DialogContent>
+                        </Dialog>
                     </PageTransition>
                 </main>
             </div>

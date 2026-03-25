@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { BrowserMultiFormatReader, IScannerControls } from "@zxing/browser";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 
 interface QRScannerProps {
     onScan: (result: string) => void;
@@ -14,7 +16,9 @@ export function QRScanner({ onScan, onError, isActive = true }: QRScannerProps) 
     const [isScanning, setIsScanning] = useState(false);
     const [error, setError] = useState("");
     const controlsRef = useRef<IScannerControls | null>(null);
-    const isMounted = useRef(false);
+    const [cameraDevices, setCameraDevices] = useState<MediaDeviceInfo[]>([]);
+    const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
+    const [cameraDialogOpen, setCameraDialogOpen] = useState(false);
 
     // Stable ref for callbacks so startScanning doesn't re-create on every render
     const onScanRef = useRef(onScan);
@@ -23,6 +27,16 @@ export function QRScanner({ onScan, onError, isActive = true }: QRScannerProps) 
     useEffect(() => { onScanRef.current = onScan; }, [onScan]);
     useEffect(() => { onErrorRef.current = onError; }, [onError]);
     useEffect(() => { isActiveRef.current = isActive; }, [isActive]);
+
+    const getPreferredDeviceId = useCallback((devices: MediaDeviceInfo[]) => {
+        const rearCamera = devices.find((device) => /back|rear|environment/i.test(device.label));
+        return rearCamera?.deviceId || devices[0]?.deviceId || "";
+    }, []);
+
+    const formatDeviceLabel = useCallback((device: MediaDeviceInfo, index: number) => {
+        if (device.label && device.label.trim().length > 0) return device.label;
+        return `Camera ${index + 1}`;
+    }, []);
 
     const killAllTracks = useCallback(() => {
         // Stop scanner controls
@@ -42,10 +56,9 @@ export function QRScanner({ onScan, onError, isActive = true }: QRScannerProps) 
     }, []);
 
     useEffect(() => {
-        isMounted.current = true;
         let cancelled = false;
 
-        async function start() {
+        async function initDevices() {
             try {
                 setError("");
 
@@ -53,14 +66,42 @@ export function QRScanner({ onScan, onError, isActive = true }: QRScannerProps) 
                     throw new Error("Camera access requires HTTPS or localhost.");
                 }
 
-                const codeReader = new BrowserMultiFormatReader();
                 const devices = await BrowserMultiFormatReader.listVideoInputDevices();
+                if (cancelled) return;
+                if (devices.length === 0) {
+                    throw new Error("No camera found");
+                }
 
-                if (cancelled) { return; }
-                if (devices.length === 0) throw new Error("No camera found");
+                setCameraDevices(devices);
+                const preferredDeviceId = getPreferredDeviceId(devices);
+                setSelectedDeviceId(preferredDeviceId);
+                setCameraDialogOpen(devices.length > 1);
+            } catch (err: any) {
+                if (cancelled) return;
+                const msg = err.message || "Failed to start camera";
+                setError(msg);
+                onErrorRef.current?.(msg);
+            }
+        }
 
+        initDevices();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [getPreferredDeviceId]);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        async function startScannerForDevice() {
+            if (!selectedDeviceId || cameraDialogOpen) return;
+            try {
+                setError("");
+                killAllTracks();
+                const codeReader = new BrowserMultiFormatReader();
                 const controls = await codeReader.decodeFromVideoDevice(
-                    devices[0].deviceId,
+                    selectedDeviceId,
                     videoRef.current!,
                     (result) => {
                         if (cancelled) return;
@@ -71,7 +112,6 @@ export function QRScanner({ onScan, onError, isActive = true }: QRScannerProps) 
                 );
 
                 if (cancelled) {
-                    // Component was unmounted while we were setting up — kill immediately
                     try { controls.stop(); } catch (_) {}
                     return;
                 }
@@ -83,22 +123,53 @@ export function QRScanner({ onScan, onError, isActive = true }: QRScannerProps) 
                 const msg = err.message || "Failed to start camera";
                 setError(msg);
                 onErrorRef.current?.(msg);
+                setIsScanning(false);
             }
         }
 
-        start();
+        startScannerForDevice();
 
         return () => {
             cancelled = true;
-            isMounted.current = false;
             killAllTracks();
             setIsScanning(false);
         };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []); // Run once on mount, cleanup on unmount
+    }, [cameraDialogOpen, killAllTracks, selectedDeviceId]);
 
     return (
-        <div className="relative">
+        <div className="relative space-y-3">
+            {cameraDevices.length > 1 && (
+                <Dialog open={cameraDialogOpen} onOpenChange={setCameraDialogOpen}>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Select Camera Source</DialogTitle>
+                            <DialogDescription>Choose which camera should be used for QR scanning.</DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-4">
+                            <div>
+                                <label htmlFor="camera-source" className="text-sm font-medium">Available Cameras</label>
+                                <select
+                                    id="camera-source"
+                                    className="mt-2 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                    value={selectedDeviceId}
+                                    onChange={(e) => setSelectedDeviceId(e.target.value)}
+                                >
+                                    {cameraDevices.map((device, index) => (
+                                        <option key={device.deviceId} value={device.deviceId}>
+                                            {formatDeviceLabel(device, index)}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="flex justify-end">
+                                <Button type="button" onClick={() => setCameraDialogOpen(false)}>
+                                    Use Selected Camera
+                                </Button>
+                            </div>
+                        </div>
+                    </DialogContent>
+                </Dialog>
+            )}
             {error ? (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-800">
                     {error}
@@ -119,6 +190,18 @@ export function QRScanner({ onScan, onError, isActive = true }: QRScannerProps) 
                         </div>
                     )}
                 </>
+            )}
+            {cameraDevices.length > 1 && !cameraDialogOpen && (
+                <div className="flex justify-end">
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCameraDialogOpen(true)}
+                    >
+                        Change Camera
+                    </Button>
+                </div>
             )}
         </div>
     );
