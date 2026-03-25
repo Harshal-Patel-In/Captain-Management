@@ -19,8 +19,10 @@ export function QRScanner({ onScan, onError, isActive = true }: QRScannerProps) 
     const [cameraDevices, setCameraDevices] = useState<MediaDeviceInfo[]>([]);
     const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
     const [cameraDialogOpen, setCameraDialogOpen] = useState(false);
+    const [readyToStart, setReadyToStart] = useState(false);
+    const [isPreparing, setIsPreparing] = useState(false);
 
-    // Stable ref for callbacks so startScanning doesn't re-create on every render
+    // Stable refs for callbacks so effects don't constantly reinitialize
     const onScanRef = useRef(onScan);
     const onErrorRef = useRef(onError);
     const isActiveRef = useRef(isActive);
@@ -39,15 +41,14 @@ export function QRScanner({ onScan, onError, isActive = true }: QRScannerProps) 
     }, []);
 
     const killAllTracks = useCallback(() => {
-        // Stop scanner controls
         if (controlsRef.current) {
             try { controlsRef.current.stop(); } catch (_) {}
             controlsRef.current = null;
         }
-        // Stop every track on the video element
+
         if (videoRef.current?.srcObject) {
             const stream = videoRef.current.srcObject as MediaStream;
-            stream.getTracks().forEach(track => {
+            stream.getTracks().forEach((track) => {
                 track.stop();
                 track.enabled = false;
             });
@@ -55,50 +56,67 @@ export function QRScanner({ onScan, onError, isActive = true }: QRScannerProps) 
         }
     }, []);
 
-    useEffect(() => {
-        let cancelled = false;
+    const prepareCamera = useCallback(async () => {
+        try {
+            setError("");
+            setIsPreparing(true);
+            setIsScanning(false);
+            killAllTracks();
 
-        async function initDevices() {
-            try {
-                setError("");
-
-                if (typeof window !== "undefined" && window.isSecureContext === false) {
-                    throw new Error("Camera access requires HTTPS or localhost.");
-                }
-
-                const devices = await BrowserMultiFormatReader.listVideoInputDevices();
-                if (cancelled) return;
-                if (devices.length === 0) {
-                    throw new Error("No camera found");
-                }
-
-                setCameraDevices(devices);
-                const preferredDeviceId = getPreferredDeviceId(devices);
-                setSelectedDeviceId(preferredDeviceId);
-                setCameraDialogOpen(devices.length > 1);
-            } catch (err: any) {
-                if (cancelled) return;
-                const msg = err.message || "Failed to start camera";
-                setError(msg);
-                onErrorRef.current?.(msg);
+            if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+                throw new Error("This browser does not support camera access.");
             }
+
+            if (typeof window !== "undefined" && window.isSecureContext === false) {
+                throw new Error("Camera needs HTTPS on mobile. Open this app with HTTPS (or localhost) and try again.");
+            }
+
+            // Trigger browser permission prompt via user gesture.
+            const preflightStream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: { ideal: "environment" } },
+                audio: false,
+            });
+            preflightStream.getTracks().forEach((track) => track.stop());
+
+            const devices = await BrowserMultiFormatReader.listVideoInputDevices();
+            if (devices.length === 0) {
+                throw new Error("No camera found on this device.");
+            }
+
+            setCameraDevices(devices);
+            const preferredDeviceId = getPreferredDeviceId(devices);
+            setSelectedDeviceId(preferredDeviceId);
+            setCameraDialogOpen(devices.length > 1);
+            setReadyToStart(true);
+        } catch (err: any) {
+            let msg = err?.message || "Failed to access camera.";
+
+            if (err?.name === "NotAllowedError") {
+                msg = "Camera permission denied. Allow camera permission in browser/site settings and try again.";
+            } else if (err?.name === "NotFoundError" || err?.name === "OverconstrainedError") {
+                msg = "No usable camera was found on this device.";
+            } else if (err?.name === "NotReadableError") {
+                msg = "Camera is busy in another app/tab. Close it and try again.";
+            }
+
+            setError(msg);
+            onErrorRef.current?.(msg);
+            setReadyToStart(false);
+        } finally {
+            setIsPreparing(false);
         }
-
-        initDevices();
-
-        return () => {
-            cancelled = true;
-        };
-    }, [getPreferredDeviceId]);
+    }, [getPreferredDeviceId, killAllTracks]);
 
     useEffect(() => {
         let cancelled = false;
 
         async function startScannerForDevice() {
-            if (!selectedDeviceId || cameraDialogOpen) return;
+            if (!readyToStart || !selectedDeviceId || cameraDialogOpen) return;
+
             try {
                 setError("");
                 killAllTracks();
+
                 const codeReader = new BrowserMultiFormatReader();
                 const controls = await codeReader.decodeFromVideoDevice(
                     selectedDeviceId,
@@ -120,7 +138,7 @@ export function QRScanner({ onScan, onError, isActive = true }: QRScannerProps) 
                 setIsScanning(true);
             } catch (err: any) {
                 if (cancelled) return;
-                const msg = err.message || "Failed to start camera";
+                const msg = err?.message || "Failed to start camera stream.";
                 setError(msg);
                 onErrorRef.current?.(msg);
                 setIsScanning(false);
@@ -134,11 +152,11 @@ export function QRScanner({ onScan, onError, isActive = true }: QRScannerProps) 
             killAllTracks();
             setIsScanning(false);
         };
-    }, [cameraDialogOpen, killAllTracks, selectedDeviceId]);
+    }, [cameraDialogOpen, killAllTracks, readyToStart, selectedDeviceId]);
 
     return (
         <div className="relative space-y-3">
-            {cameraDevices.length > 1 && (
+            {readyToStart && cameraDevices.length > 1 && (
                 <Dialog open={cameraDialogOpen} onOpenChange={setCameraDialogOpen}>
                     <DialogContent>
                         <DialogHeader>
@@ -170,9 +188,24 @@ export function QRScanner({ onScan, onError, isActive = true }: QRScannerProps) 
                     </DialogContent>
                 </Dialog>
             )}
+
             {error ? (
-                <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-800">
-                    {error}
+                <div className="space-y-3">
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-800">
+                        {error}
+                    </div>
+                    <Button type="button" variant="outline" onClick={prepareCamera} disabled={isPreparing}>
+                        {isPreparing ? "Checking Camera..." : "Try Camera Again"}
+                    </Button>
+                </div>
+            ) : !readyToStart ? (
+                <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
+                    <p className="text-sm text-muted-foreground">
+                        Tap below to enable camera and scan QR codes.
+                    </p>
+                    <Button type="button" onClick={prepareCamera} disabled={isPreparing}>
+                        {isPreparing ? "Checking Camera..." : "Enable Camera"}
+                    </Button>
                 </div>
             ) : (
                 <>
@@ -191,7 +224,8 @@ export function QRScanner({ onScan, onError, isActive = true }: QRScannerProps) 
                     )}
                 </>
             )}
-            {cameraDevices.length > 1 && !cameraDialogOpen && (
+
+            {readyToStart && cameraDevices.length > 1 && !cameraDialogOpen && (
                 <div className="flex justify-end">
                     <Button
                         type="button"
