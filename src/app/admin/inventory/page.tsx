@@ -8,11 +8,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api } from "@/lib/api";
 import { InventoryItem } from "@/lib/types";
-import { Download, Loader2, Plus, Search } from "lucide-react";
+import { ArrowDownCircle, ArrowUpCircle, ArrowUpDown, Download, Loader2, Search, X } from "lucide-react";
 
 export default function InventoryPage() {
     const [inventory, setInventory] = useState<InventoryItem[]>([]);
@@ -20,6 +20,7 @@ export default function InventoryPage() {
     const [search, setSearch] = useState("");
     const [stockInDialogOpen, setStockInDialogOpen] = useState(false);
     const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
+    const [stockOperation, setStockOperation] = useState<"in" | "out">("in");
     const [stockInQuantity, setStockInQuantity] = useState<number | string>(1);
     const [stockInRemarks, setStockInRemarks] = useState("");
     const [stockInLoading, setStockInLoading] = useState(false);
@@ -45,8 +46,9 @@ export default function InventoryPage() {
         window.open(api.getInventoryCSVUrl(), "_blank");
     };
 
-    const handleOpenStockInDialog = (item: InventoryItem) => {
+    const handleOpenStockDialog = (item: InventoryItem, operation: "in" | "out" = "in") => {
         setSelectedItem(item);
+        setStockOperation(operation);
         setStockInQuantity(1);
         setStockInRemarks("");
         setStockInMessage(null);
@@ -78,21 +80,31 @@ export default function InventoryPage() {
         setStockInLoading(true);
         setStockInMessage(null);
         try {
-            await api.stockIn({
+            const stockRequest = {
                 qr_code_value: selectedItem.qr_code_value,
                 quantity,
                 remarks: stockInRemarks || undefined,
-            });
+            };
+
+            if (stockOperation === "in") {
+                await api.stockIn(stockRequest);
+            } else {
+                await api.stockOut(stockRequest);
+            }
+
             setStockInMessage({
                 type: "success",
-                text: `${selectedItem.product_name} stocked in by ${quantity}.`,
+                text: `${selectedItem.product_name} stock ${stockOperation === "in" ? "in" : "out"} by ${quantity}.`,
             });
             await loadInventory();
             setTimeout(() => {
                 handleCloseStockInDialog();
             }, 800);
         } catch (err: any) {
-            setStockInMessage({ type: "error", text: err.message || "Failed to stock in product." });
+            setStockInMessage({
+                type: "error",
+                text: err.message || `Failed to stock ${stockOperation === "in" ? "in" : "out"} product.`,
+            });
         } finally {
             setStockInLoading(false);
         }
@@ -161,11 +173,12 @@ export default function InventoryPage() {
                                                     <div className="mt-3">
                                                         <Button
                                                             size="sm"
-                                                            className="w-full gap-2"
-                                                            onClick={() => handleOpenStockInDialog(item)}
+                                                            variant="default"
+                                                            className="w-full gap-2 border border-black bg-black text-white transition-all duration-150 hover:bg-neutral-800 active:scale-[0.98]"
+                                                            onClick={() => handleOpenStockDialog(item, "in")}
                                                         >
-                                                            <Plus className="h-4 w-4" />
-                                                            Stock In
+                                                            <ArrowUpDown className="h-4 w-4" />
+                                                            Update
                                                         </Button>
                                                     </div>
                                                 </div>
@@ -199,11 +212,12 @@ export default function InventoryPage() {
                                                     <TableCell className="text-right">
                                                         <Button
                                                             size="sm"
-                                                            className="gap-2"
-                                                            onClick={() => handleOpenStockInDialog(item)}
+                                                            variant="default"
+                                                            className="gap-2 border border-black bg-black text-white transition-all duration-150 hover:bg-neutral-800 active:scale-[0.98]"
+                                                            onClick={() => handleOpenStockDialog(item, "in")}
                                                         >
-                                                            <Plus className="h-4 w-4" />
-                                                            Stock In
+                                                            <ArrowUpDown className="h-4 w-4" />
+                                                            Update
                                                         </Button>
                                                     </TableCell>
                                                 </TableRow>
@@ -217,15 +231,61 @@ export default function InventoryPage() {
                         </Card>
 
                         <Dialog open={stockInDialogOpen} onOpenChange={(open) => (open ? setStockInDialogOpen(true) : handleCloseStockInDialog())}>
-                            <DialogContent>
+                            <DialogContent showCloseButton={false} className="sm:max-w-xl overflow-hidden border border-border bg-card p-0">
                                 <DialogHeader>
-                                    <DialogTitle>Manual Stock In</DialogTitle>
-                                    <DialogDescription>
-                                        Add stock for {selectedItem?.product_name || "selected product"}.
-                                    </DialogDescription>
+                                    <div className="relative border-b border-border px-6 py-4">
+                                        <DialogClose className="absolute right-4 top-4 rounded-md border border-border bg-card p-1 text-foreground opacity-100 transition hover:bg-muted focus:ring-2 focus:ring-ring/60 focus:outline-hidden">
+                                            <X className="h-4 w-4" />
+                                            <span className="sr-only">Close</span>
+                                        </DialogClose>
+                                        <DialogTitle className="text-lg font-semibold text-[#0b1d15] sm:text-xl">Manual Stock Update</DialogTitle>
+                                        <DialogDescription className="mt-1 text-sm text-gray-600">
+                                            Choose operation and enter quantity for {selectedItem?.product_name || "selected product"}.
+                                        </DialogDescription>
+                                    </div>
                                 </DialogHeader>
-                                <div className="space-y-4">
-                                    <div>
+                                <div className="space-y-4 px-6 pb-6 pt-5">
+                                    <div className="rounded-lg border border-border bg-muted/30 p-4">
+                                        <div className="text-sm text-gray-600">Current Stock</div>
+                                        <div className="mt-1 flex items-center justify-between gap-2">
+                                            <div className="text-base font-semibold text-[#0b1d15]">{selectedItem?.product_name || "-"}</div>
+                                            <div className="text-lg font-bold text-[#0b1d15]">
+                                                {selectedItem ? `${selectedItem.quantity} ${selectedItem.unit_label}` : "-"}
+                                            </div>
+                                        </div>
+                                        <div className="mt-2 text-xs text-gray-500">QR: {selectedItem?.qr_code_value || "-"}</div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-2 rounded-lg border border-border bg-muted/30 p-1.5">
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={() => setStockOperation("in")}
+                                            disabled={stockInLoading}
+                                            className={`h-10 gap-2 rounded-md text-sm font-medium transition-all duration-150 active:scale-[0.98] ${stockOperation === "in"
+                                                ? "border-green-200 bg-green-100 text-green-900 shadow-sm ring-1 ring-green-200 hover:bg-green-200"
+                                                : "border-green-100 bg-green-50/70 text-green-700 hover:bg-green-100 hover:text-green-800"
+                                                }`}
+                                        >
+                                            <ArrowUpCircle className="h-4 w-4" />
+                                            Stock In
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={() => setStockOperation("out")}
+                                            disabled={stockInLoading}
+                                            className={`h-10 gap-2 rounded-md text-sm font-medium transition-all duration-150 active:scale-[0.98] ${stockOperation === "out"
+                                                ? "border-red-200 bg-red-100 text-red-900 shadow-sm ring-1 ring-red-200 hover:bg-red-200"
+                                                : "border-red-100 bg-red-50/70 text-red-700 hover:bg-red-100 hover:text-red-800"
+                                                }`}
+                                        >
+                                            <ArrowDownCircle className="h-4 w-4" />
+                                            Stock Out
+                                        </Button>
+                                    </div>
+
+                                    <div className="space-y-2">
                                         <Label htmlFor="stock-in-quantity">
                                             Quantity ({selectedItem?.unit_label || "unit"})
                                         </Label>
@@ -236,16 +296,18 @@ export default function InventoryPage() {
                                             step={selectedItem?.unit_type === "piece" ? "1" : "0.01"}
                                             value={stockInQuantity}
                                             onChange={(e) => setStockInQuantity(e.target.value)}
+                                            className="h-11 rounded-md border-border bg-background"
                                         />
                                         {selectedItem?.unit_type === "piece" && (
                                             <p className="mt-1 text-xs text-gray-500">Whole numbers only for piece-based products.</p>
                                         )}
                                     </div>
-                                    <div>
+
+                                    <div className="space-y-2">
                                         <Label htmlFor="stock-in-remarks">Remarks (Optional)</Label>
                                         <textarea
                                             id="stock-in-remarks"
-                                            className="flex min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                            className="flex min-h-24 w-full rounded-md border border-border bg-background px-3 py-2.5 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                                             placeholder="Optional notes (max 500 characters)"
                                             value={stockInRemarks}
                                             onChange={(e) => setStockInRemarks(e.target.value.slice(0, 500))}
@@ -253,16 +315,18 @@ export default function InventoryPage() {
                                         />
                                     </div>
                                     {stockInMessage && (
-                                        <div className={`rounded-md border px-3 py-2 text-sm ${stockInMessage.type === "success" ? "border-green-200 bg-green-50 text-green-800" : "border-red-200 bg-red-50 text-red-700"}`}>
+                                        <div className={`rounded-md border px-3 py-2 text-sm ${stockInMessage.type === "success" ? "border-green-200 bg-green-50 text-green-700" : "border-red-200 bg-red-50 text-red-700"}`}>
                                             {stockInMessage.text}
                                         </div>
                                     )}
-                                    <div className="flex justify-end gap-2">
+
+                                    <div className="flex justify-end gap-2 pt-1">
                                         <Button
                                             type="button"
                                             variant="outline"
                                             onClick={handleCloseStockInDialog}
                                             disabled={stockInLoading}
+                                            className="rounded-md"
                                         >
                                             Cancel
                                         </Button>
@@ -270,10 +334,16 @@ export default function InventoryPage() {
                                             type="button"
                                             onClick={handleManualStockIn}
                                             disabled={stockInLoading || !selectedItem}
-                                            className="gap-2"
+                                            className={`gap-2 rounded-md px-5 ${stockOperation === "in" ? "" : "bg-[#a5412a] text-white hover:bg-[#8d3622]"}`}
                                         >
-                                            {stockInLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                                            Stock In
+                                            {stockInLoading ? (
+                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                            ) : stockOperation === "in" ? (
+                                                <ArrowUpCircle className="h-4 w-4" />
+                                            ) : (
+                                                <ArrowDownCircle className="h-4 w-4" />
+                                            )}
+                                            {stockOperation === "in" ? "Stock In" : "Stock Out"}
                                         </Button>
                                     </div>
                                 </div>

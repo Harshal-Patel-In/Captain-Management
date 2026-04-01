@@ -6,7 +6,7 @@ from typing import Optional
 class DailyStockData(BaseModel):
     """Schema for daily stock data point"""
     date: date
-    quantity: int
+    quantity: float
 
 
 class ProductActivity(BaseModel):
@@ -14,8 +14,8 @@ class ProductActivity(BaseModel):
     product_id: int
     product_name: str
     log_count: int
-    total_in: int
-    total_out: int
+    total_in: float
+    total_out: float
 
 
 class LowStockProduct(BaseModel):
@@ -23,7 +23,7 @@ class LowStockProduct(BaseModel):
     product_id: int
     product_name: str
     category: Optional[str]
-    quantity: int
+    quantity: float
 
 
 class StockTrendsResponse(BaseModel):
