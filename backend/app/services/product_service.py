@@ -1,15 +1,21 @@
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from fastapi import HTTPException
-from app.models.product import Product
+from app.models.product import Product, UnitType, UnitLabel
 from app.models.inventory import Inventory
 from app.models.stock_log import StockLog
-from app.schemas.product import ProductCreate
+from app.schemas.product import ProductCreate, ProductUpdate
 from typing import List, Optional
 
 
 class ProductService:
     """Service for product management"""
+
+    _UNIT_LABEL_MAP = {
+        UnitType.piece: UnitLabel.pcs,
+        UnitType.volume: UnitLabel.L,
+        UnitType.mass: UnitLabel.Kg,
+    }
     
     @staticmethod
     def create_product(db: Session, product_data: ProductCreate) -> Product:
@@ -80,6 +86,58 @@ class ProductService:
     def get_product_by_qr(db: Session, qr_code_value: str) -> Optional[Product]:
         """Get product by QR code value"""
         return db.query(Product).filter(Product.qr_code_value == qr_code_value).first()
+
+    @staticmethod
+    def update_product(db: Session, product_id: int, product_data: ProductUpdate) -> Product:
+        """Update editable product fields."""
+        product = db.query(Product).filter(Product.id == product_id).first()
+
+        if not product:
+            raise HTTPException(status_code=404, detail="Product not found")
+
+        update_data = product_data.model_dump(exclude_unset=True)
+        has_changes = False
+
+        if "name" in update_data and update_data["name"] is not None:
+            trimmed_name = update_data["name"].strip()
+            if not trimmed_name:
+                raise HTTPException(status_code=400, detail="Product name cannot be empty")
+            if product.name != trimmed_name:
+                product.name = trimmed_name
+                has_changes = True
+
+        if "category" in update_data:
+            category = update_data["category"]
+            normalized_category = category.strip() if isinstance(category, str) and category.strip() else None
+            if product.category != normalized_category:
+                product.category = normalized_category
+                has_changes = True
+
+        if "unit_type" in update_data and update_data["unit_type"] is not None:
+            new_unit_type = update_data["unit_type"]
+            new_unit_label = ProductService._UNIT_LABEL_MAP[new_unit_type]
+
+            if product.unit_type != new_unit_type:
+                product.unit_type = new_unit_type
+                has_changes = True
+
+            if product.unit_label != new_unit_label:
+                product.unit_label = new_unit_label
+                has_changes = True
+
+        if not has_changes:
+            return product
+
+        try:
+            db.commit()
+            db.refresh(product)
+            return product
+        except ValueError as e:
+            db.rollback()
+            raise HTTPException(status_code=400, detail=str(e))
+        except IntegrityError:
+            db.rollback()
+            raise HTTPException(status_code=400, detail="Failed to update product due to data constraints")
     
     @staticmethod
     def delete_product(db: Session, product_id: int) -> bool:

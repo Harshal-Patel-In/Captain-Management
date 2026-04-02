@@ -35,6 +35,36 @@ class StockTrendsResponse(BaseModel):
     low_stock_products: list[LowStockProduct]
 
 
+class StockConsistencyRow(BaseModel):
+    """Per-day consistency validation row"""
+    date: date
+    stock_in: float
+    stock_out: float
+    net_change: float
+    expected_net_change: float
+    difference: float
+    is_consistent: bool
+
+
+class StockConsistencyResponse(BaseModel):
+    """Stock analytics consistency report"""
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    total_days_checked: int
+    inconsistent_days: int
+    is_consistent: bool
+    rows: list[StockConsistencyRow]
+
+
+class ProductDailySummaryResponse(BaseModel):
+    """Current-day stock movement summary for a single product."""
+    product_id: int
+    date: date
+    stock_in: float
+    stock_out: float
+    net_change: float
+
+
 class AnalyticsFilter(BaseModel):
     """Schema for analytics filtering"""
     start_date: Optional[date] = None

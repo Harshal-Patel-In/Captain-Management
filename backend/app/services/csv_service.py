@@ -8,6 +8,7 @@ from app.services.analytics_service import AnalyticsService
 from app.models.stock_log import StockLog, StockAction
 from app.models.product import Product
 from sqlalchemy import func
+from app.utils.precision import normalize_quantity
 
 
 class CSVService:
@@ -61,9 +62,9 @@ class CSVService:
                 "product_id": row.product_id,
                 "product_name": row.product_name,
                 "action": row.action.value,
-                "quantity": row.quantity,
-                "previous_quantity": row.previous_quantity,
-                "new_quantity": row.new_quantity,
+                "quantity": normalize_quantity(row.quantity),
+                "previous_quantity": normalize_quantity(row.previous_quantity),
+                "new_quantity": normalize_quantity(row.new_quantity),
                 "timestamp": row.timestamp,
                 "remarks": row.remarks or ""
             }

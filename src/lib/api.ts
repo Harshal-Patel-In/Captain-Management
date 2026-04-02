@@ -1,5 +1,5 @@
 // API client for backend communication
-import { ProductsResponse, InventoryResponse, LogsResponse, StockTrendsResponse, Product, RecipeResponse, UserListItem, UserDetail, UserStats, ConversationListItem, ChatMessage, AvailableUser } from "./types";
+import { ProductsResponse, InventoryResponse, LogsResponse, StockTrendsResponse, Product, RecipeResponse, UserListItem, UserDetail, UserStats, ConversationListItem, ChatMessage, AvailableUser, ProductDailySummary } from "./types";
 
 // Dynamic API base URL that works for both localhost and network access
 const getApiBase = () => {
@@ -153,6 +153,20 @@ class APIClient {
         });
     }
 
+    async updateProduct(
+        id: number,
+        data: {
+            name?: string;
+            category?: string | null;
+            unit_type?: "piece" | "volume" | "mass";
+        }
+    ) {
+        return this.request<Product>(`/products/${id}`, {
+            method: "PATCH",
+            body: JSON.stringify(data),
+        });
+    }
+
     async deleteProduct(id: number) {
         return this.request(`/products/${id}`, {
             method: "DELETE",
@@ -213,6 +227,14 @@ class APIClient {
         }
 
         return this.request<StockTrendsResponse>(`/analytics/stock-trends?${params}`);
+    }
+
+    async getProductDailySummary(product_id: number, target_date?: string): Promise<ProductDailySummary> {
+        const params = new URLSearchParams();
+        params.append("product_id", product_id.toString());
+        if (target_date) params.append("target_date", target_date);
+
+        return this.request<ProductDailySummary>(`/analytics/product-daily-summary?${params}`);
     }
 
     // Dashboard (Optimized)

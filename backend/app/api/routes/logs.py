@@ -7,6 +7,7 @@ from app.models.stock_log import StockLog, StockAction
 from app.models.product import Product
 from app.schemas.logs import StockLogList
 from sqlalchemy import func
+from app.utils.precision import normalize_quantity
 
 router = APIRouter()
 
@@ -53,9 +54,9 @@ async def get_logs(
             "product_id": row.product_id,
             "product_name": row.product_name,
             "action": row.action,
-            "quantity": row.quantity,
-            "previous_quantity": row.previous_quantity,
-            "new_quantity": row.new_quantity,
+            "quantity": normalize_quantity(row.quantity),
+            "previous_quantity": normalize_quantity(row.previous_quantity),
+            "new_quantity": normalize_quantity(row.new_quantity),
             "timestamp": row.timestamp,
             "remarks": row.remarks
         }

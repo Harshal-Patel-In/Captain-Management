@@ -1,5 +1,6 @@
 """E-commerce Order Model"""
 import enum
+from decimal import Decimal, ROUND_HALF_UP
 from uuid import uuid4
 from sqlalchemy import Column, Numeric, DateTime, ForeignKey, Enum, CheckConstraint, String
 from sqlalchemy.sql import func
@@ -74,4 +75,7 @@ class EcommerceOrder(Base):
     @property
     def remaining_amount(self) -> float:
         """Computed remaining amount to be paid"""
-        return float(self.total_amount) - float(self.amount_paid)
+        remaining = (self.total_amount - self.amount_paid).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        if remaining < 0:
+            return 0.0
+        return float(remaining)

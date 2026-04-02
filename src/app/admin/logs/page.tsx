@@ -10,10 +10,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api } from "@/lib/api";
+import { useRealtime } from "@/context/realtime";
 import { StockLog } from "@/lib/types";
-import { Download, ArrowUp, ArrowDown } from "lucide-react";
+import { Download, ArrowUp, ArrowDown, Zap } from "lucide-react";
 
 export default function LogsPage() {
+    const { on, off, isConnected } = useRealtime();
     const [logs, setLogs] = useState<StockLog[]>([]);
     const [loading, setLoading] = useState(true);
     const [startDate, setStartDate] = useState("");
@@ -23,6 +25,23 @@ export default function LogsPage() {
         loadLogs();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    useEffect(() => {
+        const refreshLogs = async () => {
+            await loadLogs();
+        };
+
+        on("log_created", refreshLogs);
+        on("stock_changed", refreshLogs);
+        on("production_changed", refreshLogs);
+
+        return () => {
+            off("log_created", refreshLogs);
+            off("stock_changed", refreshLogs);
+            off("production_changed", refreshLogs);
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [on, off, startDate, endDate]);
 
     const loadLogs = async () => {
         setLoading(true);
@@ -53,6 +72,10 @@ export default function LogsPage() {
                             <div>
                                 <h2 className="text-2xl font-semibold text-[#0b1d15] mb-2 sm:text-3xl">Stock Logs</h2>
                                 <p className="text-gray-600">Immutable history of all stock movements</p>
+                                <p className={`mt-1 inline-flex items-center gap-1 text-xs ${isConnected ? "text-green-600" : "text-amber-600"}`}>
+                                    <Zap className="h-3.5 w-3.5" />
+                                    {isConnected ? "Realtime sync connected" : "Realtime sync connecting..."}
+                                </p>
                             </div>
                             <Button onClick={handleExport} variant="outline" className="gap-2">
                                 <Download className="h-4 w-4" />

@@ -1,23 +1,52 @@
 "use client";
 
+import { useEffect } from "react";
 import useSWR from "swr";
 import { ProtectedRoute } from "@/components/layout/ProtectedRoute";
 import { Header } from "@/components/layout/Header";
 import { PageTransition } from "@/components/layout/PageTransition";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api";
-import { Package, TrendingUp, TrendingDown, AlertTriangle } from "lucide-react";
+import { useRealtime } from "@/context/realtime";
+import { Package, TrendingUp, TrendingDown, AlertTriangle, Zap } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 
 // SWR fetcher function
 const dashboardFetcher = () => api.getDashboardStats(5);
 
 export default function DashboardPage() {
+  const { on, off, isConnected } = useRealtime();
+  
   // Use SWR for automatic caching and revalidation
-  const { data: stats, error, isLoading } = useSWR('/dashboard/stats', dashboardFetcher, {
+  const { data: stats, error, isLoading, mutate } = useSWR('/dashboard/stats', dashboardFetcher, {
     revalidateOnFocus: false, // Don't refetch when window regains focus
     dedupingInterval: 30000, // Dedupe requests within 30 seconds
   });
+
+  // Listen for real-time updates
+  useEffect(() => {
+    // Listen for stock changes
+    const handleStockChanged = async () => {
+      console.log('[REALTIME] Stock changed detected, refreshing dashboard...');
+      await mutate();
+    };
+
+    // Listen for analytics updates
+    const handleAnalyticsUpdated = async () => {
+      console.log('[REALTIME] Analytics updated detected, refreshing dashboard...');
+      await mutate();
+    };
+
+    on('stock_changed', handleStockChanged);
+    on('analytics_updated', handleAnalyticsUpdated);
+    on('inventory_updated', handleStockChanged);
+
+    return () => {
+      off('stock_changed', handleStockChanged);
+      off('analytics_updated', handleAnalyticsUpdated);
+      off('inventory_updated', handleStockChanged);
+    };
+  }, [on, off, mutate]);
 
   return (
     <ProtectedRoute>
@@ -125,6 +154,15 @@ export default function DashboardPage() {
                   <div className="flex items-center justify-between">
                     <span className="text-sm">Session</span>
                     <span className="text-sm font-medium text-green-600">Active</span>
+                  </div>
+                  <div className="flex items-center justify-between pt-2 border-t">
+                    <span className="text-sm flex items-center gap-2">
+                      <Zap className="h-4 w-4" />
+                      Real-time Sync
+                    </span>
+                    <span className={`text-sm font-medium ${isConnected ? 'text-green-600' : 'text-yellow-600'}`}>
+                      {isConnected ? 'Connected' : 'Connecting...'}
+                    </span>
                   </div>
                 </CardContent>
               </Card>

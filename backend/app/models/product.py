@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, event, Enum
+from sqlalchemy import Column, Integer, String, DateTime, event, Enum, inspect
 import enum
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
@@ -39,6 +39,6 @@ class Product(Base):
 @event.listens_for(Product, 'before_update')
 def prevent_qr_code_modification(mapper, connection, target):
     """Enforce QR code immutability"""
-    state = target._sa_instance_state
-    if state.committed_state.get('qr_code_value') != target.qr_code_value:
+    state = inspect(target)
+    if state.attrs.qr_code_value.history.has_changes():
         raise ValueError("qr_code_value is immutable and cannot be modified after creation")

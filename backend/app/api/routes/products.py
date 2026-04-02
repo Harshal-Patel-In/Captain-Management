@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from app.api.deps import get_db
 from app.services.product_service import ProductService
-from app.schemas.product import ProductCreate, ProductResponse, ProductList
+from app.schemas.product import ProductCreate, ProductUpdate, ProductResponse, ProductList
 from typing import Optional
 
 router = APIRouter()
@@ -40,6 +40,16 @@ async def get_product(
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
     return product
+
+
+@router.patch("/{product_id}", response_model=ProductResponse)
+async def update_product(
+    product_id: int,
+    product_update: ProductUpdate,
+    db: Session = Depends(get_db)
+):
+    """Update editable product fields."""
+    return ProductService.update_product(db, product_id, product_update)
 
 
 @router.delete("/{product_id}", status_code=204)

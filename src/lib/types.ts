@@ -83,6 +83,14 @@ export interface LogsResponse {
 
 export interface StockTrendsResponse extends StockTrends { }
 
+export interface ProductDailySummary {
+    product_id: number;
+    date: string;
+    stock_in: number;
+    stock_out: number;
+    net_change: number;
+}
+
 // Recipe Types
 export interface RecipeItem {
     id?: number;

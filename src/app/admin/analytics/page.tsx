@@ -9,12 +9,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
+import { useRealtime } from "@/context/realtime";
 import { StockTrends } from "@/lib/types";
-import { Download } from "lucide-react";
+import { Download, Zap } from "lucide-react";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
 import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent } from "@/components/ui/chart";
 
 export default function AnalyticsPage() {
+    const { on, off, isConnected } = useRealtime();
     const [data, setData] = useState<StockTrends | null>(null);
     const [loading, setLoading] = useState(true);
     const [startDate, setStartDate] = useState("");
@@ -25,6 +27,23 @@ export default function AnalyticsPage() {
         loadData();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    useEffect(() => {
+        const handleRealtimeAnalyticsRefresh = async () => {
+            await loadData();
+        };
+
+        on("analytics_updated", handleRealtimeAnalyticsRefresh);
+        on("stock_changed", handleRealtimeAnalyticsRefresh);
+        on("production_changed", handleRealtimeAnalyticsRefresh);
+
+        return () => {
+            off("analytics_updated", handleRealtimeAnalyticsRefresh);
+            off("stock_changed", handleRealtimeAnalyticsRefresh);
+            off("production_changed", handleRealtimeAnalyticsRefresh);
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [on, off, startDate, endDate, threshold]);
 
     const loadData = async () => {
         setLoading(true);
@@ -46,13 +65,37 @@ export default function AnalyticsPage() {
         window.open(api.getAnalyticsCSVUrl(startDate, endDate, parseInt(threshold)), "_blank");
     };
 
-    // Combine daily data for chart
-    const combinedDailyData = data?.daily_stock_in.map((item, idx) => ({
-        date: item.date,
-        stock_in: item.quantity,
-        stock_out: data.daily_stock_out[idx]?.quantity || 0,
-        net_change: data.net_stock_change[idx]?.quantity || 0,
-    })) || [];
+    // Combine daily series by date key to avoid index-mismatch across sparse datasets.
+    const combinedDailyData = (() => {
+        if (!data) return [];
+
+        const byDate = new Map<string, { date: string; stock_in: number; stock_out: number; net_change: number }>();
+
+        const ensureRow = (dateValue: string | Date) => {
+            const key = String(dateValue);
+            if (!byDate.has(key)) {
+                byDate.set(key, { date: key, stock_in: 0, stock_out: 0, net_change: 0 });
+            }
+            return byDate.get(key)!;
+        };
+
+        data.daily_stock_in.forEach((item) => {
+            const row = ensureRow(item.date);
+            row.stock_in = Number(item.quantity) || 0;
+        });
+
+        data.daily_stock_out.forEach((item) => {
+            const row = ensureRow(item.date);
+            row.stock_out = Number(item.quantity) || 0;
+        });
+
+        data.net_stock_change.forEach((item) => {
+            const row = ensureRow(item.date);
+            row.net_change = Number(item.quantity) || 0;
+        });
+
+        return Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
+    })();
 
     const chartConfig = {
         stock_in: {
@@ -91,6 +134,10 @@ export default function AnalyticsPage() {
                             <div>
                                 <h2 className="text-2xl font-semibold text-[#0b1d15] mb-2 sm:text-3xl">Analytics</h2>
                                 <p className="text-gray-600">Stock trends and insights</p>
+                                <p className={`mt-1 inline-flex items-center gap-1 text-xs ${isConnected ? "text-green-600" : "text-amber-600"}`}>
+                                    <Zap className="h-3.5 w-3.5" />
+                                    {isConnected ? "Realtime sync connected" : "Realtime sync connecting..."}
+                                </p>
                             </div>
                             <Button onClick={handleExport} variant="outline" className="gap-2">
                                 <Download className="h-4 w-4" />

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { ProtectedRoute } from "@/components/layout/ProtectedRoute";
 import { Header } from "@/components/layout/Header";
 import { PageTransition } from "@/components/layout/PageTransition";
@@ -11,10 +12,15 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api } from "@/lib/api";
-import { InventoryItem } from "@/lib/types";
-import { ArrowDownCircle, ArrowUpCircle, ArrowUpDown, Download, Loader2, Search, X } from "lucide-react";
+import { useRealtime } from "@/context/realtime";
+import { InventoryItem, ProductDailySummary } from "@/lib/types";
+import { formatQuantity } from "@/lib/utils";
+import { ArrowDownCircle, ArrowUpCircle, ArrowUpDown, Download, Loader2, Search, X, Zap } from "lucide-react";
+
+const TOOLTIP_AUTO_HIDE_MS = 6000;
 
 export default function InventoryPage() {
+    const { on, off, isConnected } = useRealtime();
     const [inventory, setInventory] = useState<InventoryItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState("");
@@ -25,11 +31,35 @@ export default function InventoryPage() {
     const [stockInRemarks, setStockInRemarks] = useState("");
     const [stockInLoading, setStockInLoading] = useState(false);
     const [stockInMessage, setStockInMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+    const [recentUpdate, setRecentUpdate] = useState<number | null>(null); // Product ID recently updated
+    const [activeTooltipProductId, setActiveTooltipProductId] = useState<number | null>(null);
+    const [dailySummaryByProduct, setDailySummaryByProduct] = useState<Record<number, ProductDailySummary>>({});
+    const [dailySummaryLoadingByProduct, setDailySummaryLoadingByProduct] = useState<Record<number, boolean>>({});
+    const [tooltipPosition, setTooltipPosition] = useState<{ top: number; left: number } | null>(null);
+    const [isTooltipHovered, setIsTooltipHovered] = useState(false);
 
     useEffect(() => {
         loadInventory();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    // Listen for real-time stock updates
+    useEffect(() => {
+        const handleStockChanged = async (event: any) => {
+            console.log('[REALTIME] Stock changed:', event);
+            // Highlight the updated item
+            setRecentUpdate(event.product_id);
+            setTimeout(() => setRecentUpdate(null), 2000);
+            // Refresh inventory
+            await loadInventory();
+        };
+
+        on('stock_changed', handleStockChanged);
+
+        return () => {
+            off('stock_changed', handleStockChanged);
+        };
+    }, [on, off]);
 
     const loadInventory = async () => {
         try {
@@ -62,6 +92,59 @@ export default function InventoryPage() {
         setStockInRemarks("");
         setStockInMessage(null);
     };
+
+    const handleToggleDailyTooltip = async (event: React.MouseEvent<HTMLElement>, productId: number) => {
+        event.stopPropagation();
+
+        if (activeTooltipProductId === productId) {
+            setActiveTooltipProductId(null);
+            setTooltipPosition(null);
+            return;
+        }
+
+        const rect = event.currentTarget.getBoundingClientRect();
+        const estimatedTooltipWidth = 240;
+        const horizontalPadding = 8;
+        const left = Math.min(
+            Math.max(horizontalPadding, rect.left),
+            window.innerWidth - estimatedTooltipWidth - horizontalPadding,
+        );
+
+        const top = Math.max(horizontalPadding, rect.bottom + 8);
+
+        setTooltipPosition({
+            top,
+            left,
+        });
+        setIsTooltipHovered(false);
+
+        setActiveTooltipProductId(productId);
+
+        if (dailySummaryByProduct[productId] || dailySummaryLoadingByProduct[productId]) {
+            return;
+        }
+
+        setDailySummaryLoadingByProduct((prev) => ({ ...prev, [productId]: true }));
+        try {
+            const summary = await api.getProductDailySummary(productId);
+            setDailySummaryByProduct((prev) => ({ ...prev, [productId]: summary }));
+        } catch (err) {
+            console.error("Failed to load product daily summary:", err);
+        } finally {
+            setDailySummaryLoadingByProduct((prev) => ({ ...prev, [productId]: false }));
+        }
+    };
+
+    useEffect(() => {
+        if (activeTooltipProductId === null || isTooltipHovered) return;
+
+        const timeoutId = window.setTimeout(() => {
+            setActiveTooltipProductId(null);
+            setTooltipPosition(null);
+        }, TOOLTIP_AUTO_HIDE_MS);
+
+        return () => window.clearTimeout(timeoutId);
+    }, [activeTooltipProductId, isTooltipHovered]);
 
     const handleManualStockIn = async () => {
         if (!selectedItem) return;
@@ -155,13 +238,19 @@ export default function InventoryPage() {
                                             {inventory.map((item) => (
                                                 <div key={item.product_id} className="rounded-xl border bg-card p-4">
                                                     <div className="flex items-start justify-between">
-                                                        <div>
-                                                            <div className="font-medium text-[#0b1d15]">{item.product_name}</div>
+                                                        <div className="relative">
+                                                            <button
+                                                                type="button"
+                                                                className="font-medium text-[#0b1d15] text-left underline-offset-2 hover:underline"
+                                                                onClick={(event) => handleToggleDailyTooltip(event, item.product_id)}
+                                                            >
+                                                                {item.product_name}
+                                                            </button>
                                                             <div className="text-sm text-gray-500">{item.category || "Uncategorized"}</div>
                                                         </div>
                                                         <div className="text-right">
                                                             <div className={`text-xl font-bold ${item.quantity < 5 ? "text-orange-600" : "text-[#0b1d15]"}`}>
-                                                                {item.quantity} {item.unit_label}
+                                                                {formatQuantity(item.quantity)} {item.unit_label}
                                                             </div>
                                                             <div className="text-xs text-gray-400">in stock</div>
                                                         </div>
@@ -199,13 +288,33 @@ export default function InventoryPage() {
                                         </TableHeader>
                                         <TableBody>
                                             {inventory.map((item) => (
-                                                <TableRow key={item.product_id}>
-                                                    <TableCell className="font-medium">{item.product_name}</TableCell>
+                                                <TableRow 
+                                                    key={item.product_id}
+                                                    className={`transition-colors duration-500 ${
+                                                        recentUpdate === item.product_id 
+                                                          ? 'bg-green-100' 
+                                                          : ''
+                                                    }`}
+                                                >
+                                                    <TableCell className="font-medium flex items-center gap-2">
+                                                        {recentUpdate === item.product_id && (
+                                                            <Zap className="h-4 w-4 text-green-600" />
+                                                        )}
+                                                        <div className="relative">
+                                                            <button
+                                                                type="button"
+                                                                className="text-left underline-offset-2 hover:underline"
+                                                                onClick={(event) => handleToggleDailyTooltip(event, item.product_id)}
+                                                            >
+                                                                {item.product_name}
+                                                            </button>
+                                                        </div>
+                                                    </TableCell>
                                                     <TableCell>{item.category || "-"}</TableCell>
                                                     <TableCell className="font-mono text-sm">{item.qr_code_value}</TableCell>
                                                     <TableCell className="text-right font-bold">
                                                         <span className={item.quantity < 5 ? "text-orange-600" : ""}>
-                                                            {item.quantity} <span className="text-sm text-gray-600">{item.unit_label}</span>
+                                                            {formatQuantity(item.quantity)} <span className="text-sm text-gray-600">{item.unit_label}</span>
                                                         </span>
                                                     </TableCell>
                                                     <TableCell>{new Date(item.last_updated).toLocaleString()}</TableCell>
@@ -229,6 +338,52 @@ export default function InventoryPage() {
                                 )}
                             </CardContent>
                         </Card>
+
+                        {typeof document !== "undefined" && activeTooltipProductId !== null && tooltipPosition && createPortal(
+                            <>
+                                <div
+                                    className="fixed inset-0 z-9998"
+                                    onClick={() => {
+                                        setActiveTooltipProductId(null);
+                                        setTooltipPosition(null);
+                                        setIsTooltipHovered(false);
+                                    }}
+                                />
+                                <div
+                                    className="fixed z-9999 min-w-55 rounded-md border border-gray-200 bg-white p-3 text-xs shadow-lg"
+                                    style={{ top: tooltipPosition.top, left: tooltipPosition.left }}
+                                    onClick={(event) => event.stopPropagation()}
+                                    onMouseEnter={() => setIsTooltipHovered(true)}
+                                    onMouseLeave={() => setIsTooltipHovered(false)}
+                                >
+                                    <div className="mb-2 font-semibold text-[#0b1d15]">Today Movement</div>
+                                    {dailySummaryLoadingByProduct[activeTooltipProductId] ? (
+                                        <div className="text-gray-500">Loading...</div>
+                                    ) : dailySummaryByProduct[activeTooltipProductId] ? (
+                                        <div className="space-y-1">
+                                            <div className="flex items-center justify-between gap-4">
+                                                <span className="text-gray-600">Stock In</span>
+                                                <span className="font-mono text-green-700">+{formatQuantity(dailySummaryByProduct[activeTooltipProductId].stock_in)}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between gap-4">
+                                                <span className="text-gray-600">Stock Out</span>
+                                                <span className="font-mono text-red-700">-{formatQuantity(dailySummaryByProduct[activeTooltipProductId].stock_out)}</span>
+                                            </div>
+                                            <div className="mt-1 border-t pt-1 flex items-center justify-between gap-4">
+                                                <span className="text-gray-700 font-semibold">Net Change</span>
+                                                <span className={`font-mono font-semibold ${dailySummaryByProduct[activeTooltipProductId].net_change >= 0 ? "text-green-700" : "text-red-700"}`}>
+                                                    {dailySummaryByProduct[activeTooltipProductId].net_change >= 0 ? "+" : ""}
+                                                    {formatQuantity(dailySummaryByProduct[activeTooltipProductId].net_change)}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="text-gray-500">No movement data for today.</div>
+                                    )}
+                                </div>
+                            </>,
+                            document.body
+                        )}
 
                         <Dialog open={stockInDialogOpen} onOpenChange={(open) => (open ? setStockInDialogOpen(true) : handleCloseStockInDialog())}>
                             <DialogContent showCloseButton={false} className="sm:max-w-xl overflow-hidden border border-border bg-card p-0">

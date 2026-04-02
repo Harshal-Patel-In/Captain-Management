@@ -9,6 +9,7 @@ from app.schemas.ecommerce_product import (
     EcommerceProductPublish, EcommerceProductUpdate,
     PublishableProductResponse
 )
+from app.services.realtime_service import realtime_manager, schedule_realtime_task
 
 
 class EcommerceProductService:
@@ -119,6 +120,24 @@ class EcommerceProductService:
             db.add(ecommerce_product)
             db.commit()
             db.refresh(ecommerce_product)
+            
+            # Broadcast real-time event
+            try:
+                schedule_realtime_task(
+                    realtime_manager.broadcast_ecommerce_product_changed(
+                        ecommerce_product_id=str(ecommerce_product.id),
+                        action="published",
+                        changes={
+                            "name": product.name,
+                            "price": publish_data.price,
+                            "description": publish_data.description,
+                            "stock_quantity": int(inventory.quantity),
+                        }
+                    )
+                )
+            except Exception as e:
+                print(f"[REALTIME] Failed to broadcast product publish: {e}")
+            
             return ecommerce_product
             
         except HTTPException:
@@ -161,6 +180,36 @@ class EcommerceProductService:
             
             db.commit()
             db.refresh(product)
+            
+            # Broadcast real-time event
+            try:
+                changes = {}
+                if update_data.description is not None:
+                    changes["description"] = update_data.description
+                if update_data.price is not None:
+                    changes["price"] = update_data.price
+                if update_data.pack_size is not None:
+                    changes["pack_size"] = update_data.pack_size
+                if update_data.weight is not None:
+                    changes["weight"] = update_data.weight
+                if update_data.dimensions is not None:
+                    changes["dimensions"] = update_data.dimensions
+                if update_data.images is not None:
+                    changes["images"] = update_data.images
+                if update_data.is_active is not None:
+                    changes["is_active"] = update_data.is_active
+                
+                if changes:
+                    schedule_realtime_task(
+                        realtime_manager.broadcast_ecommerce_product_changed(
+                            ecommerce_product_id=str(product_id),
+                            action="updated",
+                            changes=changes
+                        )
+                    )
+            except Exception as e:
+                print(f"[REALTIME] Failed to broadcast product update: {e}")
+            
             return product
             
         except HTTPException:
@@ -207,4 +256,17 @@ class EcommerceProductService:
         ).update({"stock_quantity": int(inventory.quantity)})
         
         db.commit()
+        
+        # Broadcast real-time event
+        try:
+            schedule_realtime_task(
+                realtime_manager.broadcast_ecommerce_product_changed(
+                    ecommerce_product_id="",  # Sync affects source, not specific ecommerce product
+                    action="updated",
+                    changes={"stock_quantity": int(inventory.quantity), "source_product_id": source_product_id}
+                )
+            )
+        except Exception as e:
+            print(f"[REALTIME] Failed to broadcast stock sync: {e}")
+        
         return result

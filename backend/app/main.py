@@ -42,7 +42,7 @@ async def health_check():
 
 
 # Import and include routers
-from app.api.routes import products, stock, inventory, logs, analytics, export, dashboard
+from app.api.routes import products, stock, inventory, logs, analytics, export, dashboard, realtime
 
 app.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
 app.include_router(products.router, prefix="/products", tags=["products"])
@@ -51,6 +51,7 @@ app.include_router(inventory.router, prefix="/inventory", tags=["inventory"])
 app.include_router(logs.router, prefix="/logs", tags=["logs"])
 app.include_router(analytics.router, prefix="/analytics", tags=["analytics"])
 app.include_router(export.router, prefix="/export", tags=["export"])
+app.include_router(realtime.router, tags=["realtime"])
 from app.api.routes import production
 app.include_router(production.router, prefix="/production", tags=["production"])
 

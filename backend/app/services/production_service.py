@@ -7,6 +7,8 @@ from app.models.inventory import Inventory
 from app.schemas.recipe import ProductionRequest, RecipeItemCreate
 from app.services.stock_service import StockService
 from app.schemas.stock import StockOperationRequest
+from app.services.realtime_service import realtime_manager, schedule_realtime_task
+from app.utils.precision import normalize_positive_quantity, normalize_quantity
 
 class ProductionService:
     @staticmethod
@@ -53,11 +55,11 @@ class ProductionService:
         consumed_log = []
         
         for item in recipe_items:
-            required_qty = item.quantity * request.quantity
+            required_qty = normalize_positive_quantity(item.quantity * request.quantity)
             
             # Check stock
             inventory = db.query(Inventory).filter(Inventory.product_id == item.ingredient_id).first()
-            current_qty = inventory.quantity if inventory else 0
+            current_qty = normalize_quantity(inventory.quantity) if inventory else 0.0
             
             if current_qty < required_qty:
                 sub_product = db.query(Product).get(item.ingredient_id)
@@ -91,7 +93,8 @@ class ProductionService:
                 
                 # Deduct
                 inv = db.query(Inventory).filter(Inventory.product_id == log["ingredient_id"]).first()
-                inv.quantity -= log["required_qty"]
+                previous_qty = normalize_quantity(inv.quantity)
+                inv.quantity = normalize_quantity(previous_qty - log["required_qty"])
                 # Log happens in StockLog? We should technically log "Production Consumption"
                 # For MVP, we can treat it as Stock Out
                 from app.models.stock_log import StockLog, StockAction
@@ -99,7 +102,7 @@ class ProductionService:
                     product_id=log["ingredient_id"],
                     action=StockAction.OUT,
                     quantity=log["required_qty"],
-                    previous_quantity=inv.quantity + log["required_qty"],
+                    previous_quantity=previous_qty,
                     new_quantity=inv.quantity,
                     remarks=f"Consumed for production of Product {product_name}"
                 )
@@ -112,14 +115,15 @@ class ProductionService:
                  prod_inv = Inventory(product_id=request.product_id, quantity=0)
                  db.add(prod_inv)
             
-            prev_qty = prod_inv.quantity
-            prod_inv.quantity += request.quantity
+            prev_qty = normalize_quantity(prod_inv.quantity)
+            produced_qty = normalize_positive_quantity(request.quantity)
+            prod_inv.quantity = normalize_quantity(prev_qty + produced_qty)
             
             from app.models.stock_log import StockLog, StockAction
             prod_log = StockLog(
                 product_id=request.product_id,
                 action=StockAction.IN,
-                quantity=request.quantity,
+                quantity=produced_qty,
                 previous_quantity=prev_qty,
                 new_quantity=prod_inv.quantity,
                 remarks="Produced via manufacturing"
@@ -127,10 +131,38 @@ class ProductionService:
             db.add(prod_log)
 
             db.commit()
+
+            # Broadcast production + analytics updates to realtime clients.
+            try:
+                event_payload = {
+                    "product_id": request.product_id,
+                    "product_name": product_name,
+                    "action": "completed",
+                    "quantity_produced": produced_qty,
+                    "ingredients_consumed": [
+                        {"name": c["product"].name, "quantity": c["required_qty"]} for c in consumed_log
+                    ],
+                }
+                schedule_realtime_task(realtime_manager.broadcast_production_changed(**event_payload))
+                schedule_realtime_task(
+                    realtime_manager.broadcast_log_created(
+                        log_type="production",
+                        log_data={
+                            "product_id": request.product_id,
+                            "product_name": product_name,
+                            "quantity_produced": produced_qty,
+                            "ingredients_consumed": event_payload["ingredients_consumed"],
+                        },
+                    )
+                )
+                schedule_realtime_task(realtime_manager.broadcast_inventory_updated())
+                schedule_realtime_task(realtime_manager.broadcast_analytics_updated())
+            except Exception as e:
+                print(f"[REALTIME] Failed to broadcast production update: {e}")
             
             return {
                 "product_id": request.product_id,
-                "quantity_produced": request.quantity,
+                "quantity_produced": produced_qty,
                 "ingredients_consumed": [
                     {"name": c["product"].name, "quantity": c["required_qty"]} for c in consumed_log
                 ]

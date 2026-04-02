@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api } from "@/lib/api";
 import { Product } from "@/lib/types";
-import { Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 
 const UNIT_TYPE_TO_LABEL = {
     piece: "pcs",
@@ -22,10 +22,17 @@ const UNIT_TYPE_TO_LABEL = {
     mass: "Kg",
 } as const;
 
+const getErrorMessage = (err: unknown, fallbackMessage: string) => {
+    if (err instanceof Error) return err.message;
+    return fallbackMessage;
+};
+
 export default function ProductsPage() {
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
     const [dialogOpen, setDialogOpen] = useState(false);
+    const [editDialogOpen, setEditDialogOpen] = useState(false);
+    const [productToEdit, setProductToEdit] = useState<Product | null>(null);
     const [formData, setFormData] = useState<{
         name: string;
         category: string;
@@ -39,21 +46,34 @@ export default function ProductsPage() {
         unit_type: "piece",
         unit_label: "pcs"
     });
+    const [editFormData, setEditFormData] = useState<{
+        name: string;
+        category: string;
+        unit_type: "piece" | "volume" | "mass";
+        unit_label: "pcs" | "L" | "ml" | "Kg";
+    }>({
+        name: "",
+        category: "",
+        unit_type: "piece",
+        unit_label: "pcs",
+    });
     const [error, setError] = useState("");
+    const [editError, setEditError] = useState("");
+    const [editLoading, setEditLoading] = useState(false);
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
     const [productToDelete, setProductToDelete] = useState<Product | null>(null);
     const [deleteError, setDeleteError] = useState("");
+    const [statusMessage, setStatusMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
     useEffect(() => {
         loadProducts();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const loadProducts = async () => {
         try {
             const data = await api.getProducts();
             setProducts(data.products || []);
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error("Failed to load products:", err);
         } finally {
             setLoading(false);
@@ -63,6 +83,7 @@ export default function ProductsPage() {
     const handleCreate = async (e: React.FormEvent) => {
         e.preventDefault();
         setError("");
+        setStatusMessage(null);
 
         try {
             await api.createProduct(formData);
@@ -74,9 +95,69 @@ export default function ProductsPage() {
                 unit_type: "piece",
                 unit_label: "pcs"
             });
-            loadProducts();
-        } catch (err: any) {
-            setError(err.message || "Failed to create product");
+            await loadProducts();
+            setStatusMessage({ type: "success", text: "Product created successfully." });
+        } catch (err: unknown) {
+            setError(getErrorMessage(err, "Failed to create product"));
+        }
+    };
+
+    const handleEditClick = (product: Product) => {
+        setProductToEdit(product);
+        setEditError("");
+        setEditFormData({
+            name: product.name,
+            category: product.category || "",
+            unit_type: product.unit_type,
+            unit_label: product.unit_label,
+        });
+        setEditDialogOpen(true);
+    };
+
+    const handleUpdateProduct = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!productToEdit) return;
+
+        setEditError("");
+        setEditLoading(true);
+        setStatusMessage(null);
+
+        try {
+            const trimmedName = editFormData.name.trim();
+            const trimmedCategory = editFormData.category.trim();
+            const currentCategory = productToEdit.category || "";
+
+            if (!trimmedName) {
+                setEditError("Product name cannot be empty");
+                return;
+            }
+
+            const noChanges =
+                trimmedName === productToEdit.name &&
+                trimmedCategory === currentCategory &&
+                editFormData.unit_type === productToEdit.unit_type;
+
+            if (noChanges) {
+                setEditDialogOpen(false);
+                setProductToEdit(null);
+                setStatusMessage({ type: "success", text: "No changes to save." });
+                return;
+            }
+
+            await api.updateProduct(productToEdit.id, {
+                name: trimmedName,
+                category: trimmedCategory ? trimmedCategory : null,
+                unit_type: editFormData.unit_type,
+            });
+
+            setEditDialogOpen(false);
+            setProductToEdit(null);
+            await loadProducts();
+            setStatusMessage({ type: "success", text: "Product updated successfully." });
+        } catch (err: unknown) {
+            setEditError(getErrorMessage(err, "Failed to update product"));
+        } finally {
+            setEditLoading(false);
         }
     };
 
@@ -88,6 +169,7 @@ export default function ProductsPage() {
 
     const handleDeleteConfirm = async () => {
         if (!productToDelete) return;
+        setStatusMessage(null);
 
         // Optimistic UI update: immediately remove from UI
         const originalProducts = [...products];
@@ -97,11 +179,12 @@ export default function ProductsPage() {
         try {
             await api.deleteProduct(productToDelete.id);
             setProductToDelete(null);
+            setStatusMessage({ type: "success", text: "Product deleted successfully." });
             // Success! The UI is already updated
-        } catch (err: any) {
+        } catch (err: unknown) {
             // Revert the optimistic update on error
             setProducts(originalProducts);
-            setDeleteError(err.message || "Failed to delete product");
+            setDeleteError(getErrorMessage(err, "Failed to delete product"));
             setDeleteDialogOpen(true); // Re-open dialog to show error
         }
     };
@@ -122,6 +205,17 @@ export default function ProductsPage() {
                             <div>
                                 <h2 className="text-2xl font-semibold text-[#0b1d15] mb-2 sm:text-3xl">Products</h2>
                                 <p className="text-gray-600">Manage your product registry</p>
+                                {statusMessage && (
+                                    <p
+                                        className={`mt-2 rounded-md border px-3 py-2 text-sm ${
+                                            statusMessage.type === "success"
+                                                ? "border-green-200 bg-green-50 text-green-700"
+                                                : "border-red-200 bg-red-50 text-red-700"
+                                        }`}
+                                    >
+                                        {statusMessage.text}
+                                    </p>
+                                )}
                             </div>
                             <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
                                 <DialogTrigger asChild>
@@ -207,6 +301,95 @@ export default function ProductsPage() {
                                     </form>
                                 </DialogContent>
                             </Dialog>
+
+                            <Dialog
+                                open={editDialogOpen}
+                                onOpenChange={(open) => {
+                                    setEditDialogOpen(open);
+                                    if (!open) {
+                                        setProductToEdit(null);
+                                        setEditError("");
+                                    }
+                                }}
+                            >
+                                <DialogContent>
+                                    <DialogHeader>
+                                        <DialogTitle>Edit Product</DialogTitle>
+                                        <DialogDescription>Update product details. QR code cannot be changed.</DialogDescription>
+                                    </DialogHeader>
+                                    <form onSubmit={handleUpdateProduct} className="space-y-4">
+                                        <div>
+                                            <Label htmlFor="edit-name">Product Name *</Label>
+                                            <Input
+                                                id="edit-name"
+                                                value={editFormData.name}
+                                                onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
+                                                required
+                                            />
+                                        </div>
+                                        <div>
+                                            <Label htmlFor="edit-category">Category</Label>
+                                            <Input
+                                                id="edit-category"
+                                                value={editFormData.category}
+                                                onChange={(e) => setEditFormData({ ...editFormData, category: e.target.value })}
+                                            />
+                                        </div>
+                                        <div>
+                                            <Label htmlFor="edit-qr">QR Code</Label>
+                                            <Input
+                                                id="edit-qr"
+                                                value={productToEdit?.qr_code_value || ""}
+                                                disabled
+                                                readOnly
+                                            />
+                                        </div>
+                                        <div>
+                                            <Label htmlFor="edit-unit-type">Unit Type</Label>
+                                            <Select
+                                                value={editFormData.unit_type}
+                                                onValueChange={(value: "piece" | "volume" | "mass") => {
+                                                    setEditFormData({
+                                                        ...editFormData,
+                                                        unit_type: value,
+                                                        unit_label: UNIT_TYPE_TO_LABEL[value],
+                                                    });
+                                                }}
+                                            >
+                                                <SelectTrigger id="edit-unit-type">
+                                                    <SelectValue placeholder="Select type" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="piece">Piece</SelectItem>
+                                                    <SelectItem value="volume">Volume</SelectItem>
+                                                    <SelectItem value="mass">Mass</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        <div>
+                                            <Label htmlFor="edit-unit-label">Unit Label</Label>
+                                            <Select value={editFormData.unit_label} disabled>
+                                                <SelectTrigger id="edit-unit-label">
+                                                    <SelectValue placeholder="Select unit" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {editFormData.unit_type === "piece" ? (
+                                                        <SelectItem value="pcs">Pieces (pcs)</SelectItem>
+                                                    ) : editFormData.unit_type === "mass" ? (
+                                                        <SelectItem value="Kg">Kilograms (Kg)</SelectItem>
+                                                    ) : (
+                                                        <SelectItem value="L">Liters (L)</SelectItem>
+                                                    )}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        {editError && <p className="text-sm text-red-600">{editError}</p>}
+                                        <Button type="submit" className="w-full" disabled={editLoading}>
+                                            {editLoading ? "Saving..." : "Save Changes"}
+                                        </Button>
+                                    </form>
+                                </DialogContent>
+                            </Dialog>
                         </div>
 
                         <Card>
@@ -229,14 +412,24 @@ export default function ProductsPage() {
                                                             <div className="font-medium text-[#0b1d15]">{product.name}</div>
                                                             <div className="text-sm text-gray-500">{product.category || "Uncategorized"}</div>
                                                         </div>
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            onClick={() => handleDeleteClick(product)}
-                                                            className="text-red-600 hover:text-red-700 -mr-2 -mt-1"
-                                                        >
-                                                            <Trash2 className="h-4 w-4" />
-                                                        </Button>
+                                                        <div className="flex items-center gap-1 -mr-2 -mt-1">
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                onClick={() => handleEditClick(product)}
+                                                                className="text-[#0b1d15] hover:text-[#0b1d15]"
+                                                            >
+                                                                <Pencil className="h-4 w-4" />
+                                                            </Button>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                onClick={() => handleDeleteClick(product)}
+                                                                className="text-red-600 hover:text-red-700"
+                                                            >
+                                                                <Trash2 className="h-4 w-4" />
+                                                            </Button>
+                                                        </div>
                                                     </div>
                                                     <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-600">
                                                         <span className="capitalize">{product.unit_label} ({product.unit_type})</span>
@@ -270,14 +463,24 @@ export default function ProductsPage() {
                                                     <TableCell className="font-mono text-sm">{product.qr_code_value}</TableCell>
                                                     <TableCell>{new Date(product.created_at).toLocaleDateString()}</TableCell>
                                                     <TableCell className="text-right">
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            onClick={() => handleDeleteClick(product)}
-                                                            className="text-red-600 hover:text-red-700"
-                                                        >
-                                                            <Trash2 className="h-4 w-4" />
-                                                        </Button>
+                                                        <div className="inline-flex items-center gap-1">
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                onClick={() => handleEditClick(product)}
+                                                                className="text-[#0b1d15] hover:text-[#0b1d15]"
+                                                            >
+                                                                <Pencil className="h-4 w-4" />
+                                                            </Button>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                onClick={() => handleDeleteClick(product)}
+                                                                className="text-red-600 hover:text-red-700"
+                                                            >
+                                                                <Trash2 className="h-4 w-4" />
+                                                            </Button>
+                                                        </div>
                                                     </TableCell>
                                                 </TableRow>
                                             ))}
@@ -295,7 +498,8 @@ export default function ProductsPage() {
                                 <DialogHeader>
                                     <DialogTitle>Delete Product</DialogTitle>
                                     <DialogDescription>
-                                        Are you sure you want to delete "{productToDelete?.name}"?
+                                        Are you sure you want to delete {" "}
+                                        <span className="font-semibold">&quot;{productToDelete?.name}&quot;</span>?
                                         This will fail if stock logs exist for this product.
                                     </DialogDescription>
                                 </DialogHeader>

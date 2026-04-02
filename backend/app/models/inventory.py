@@ -1,7 +1,9 @@
 from sqlalchemy import Column, Integer, Float, ForeignKey, DateTime, CheckConstraint
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
+from sqlalchemy import event
 from app.database import Base
+from app.utils.precision import normalize_quantity
 
 
 class Inventory(Base):
@@ -15,3 +17,9 @@ class Inventory(Base):
     
     # Relationships
     product = relationship("Product", back_populates="inventory")
+
+
+@event.listens_for(Inventory, "before_insert")
+@event.listens_for(Inventory, "before_update")
+def normalize_inventory_quantity(_, __, target: Inventory) -> None:
+    target.quantity = normalize_quantity(target.quantity)

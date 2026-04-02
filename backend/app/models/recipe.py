@@ -1,7 +1,9 @@
 from sqlalchemy import Column, Integer, Float, ForeignKey, DateTime
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+from sqlalchemy import event
 from app.database import Base
+from app.utils.precision import normalize_positive_quantity
 
 from app.models.product import Product
 
@@ -19,3 +21,9 @@ class Recipe(Base):
     # Relationships
     product = relationship(Product, foreign_keys=[product_id], backref="recipe_items")
     ingredient = relationship(Product, foreign_keys=[ingredient_id])
+
+
+@event.listens_for(Recipe, "before_insert")
+@event.listens_for(Recipe, "before_update")
+def normalize_recipe_quantity(_, __, target: Recipe) -> None:
+    target.quantity = normalize_positive_quantity(target.quantity)

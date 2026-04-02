@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api } from "@/lib/api";
 import { Product, RecipeItem } from "@/lib/types";
+import { formatQuantity } from "@/lib/utils";
 import { Plus, Trash2, ArrowRight, Package, AlertTriangle } from "lucide-react";
 
 export default function ProductionPage() {
@@ -215,7 +216,7 @@ export default function ProductionPage() {
                                                         <Label className="text-xs">Qty (per 1 {selectedProduct.unit_label})</Label>
                                                         <Input
                                                             type="number"
-                                                            step="0.01"
+                                                            step="0.001"
                                                             className="h-9"
                                                             value={ingredientQty}
                                                             onChange={e => setIngredientQty(e.target.value === "" ? "" : parseFloat(e.target.value))}
@@ -246,7 +247,7 @@ export default function ProductionPage() {
                                                                     <TableRow key={idx}>
                                                                         <TableCell>{item.ingredient?.name || item.ingredient_id}</TableCell>
                                                                         <TableCell className="text-right font-mono">
-                                                                            {item.quantity} {item.ingredient?.unit_label}
+                                                                            {formatQuantity(item.quantity)} {item.ingredient?.unit_label}
                                                                         </TableCell>
                                                                         <TableCell>
                                                                             <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-red-500" onClick={() => removeIngredient(idx)}>
@@ -277,7 +278,7 @@ export default function ProductionPage() {
                                             <div className="flex items-center gap-4 mt-2">
                                                 <Input
                                                     type="number"
-                                                    step="0.01"
+                                                    step="0.001"
                                                     value={produceQty}
                                                     onChange={e => setProduceQty(e.target.value === "" ? "" : parseFloat(e.target.value))}
                                                     className="text-2xl h-14 font-semibold"
@@ -295,14 +296,14 @@ export default function ProductionPage() {
                                                     <li key={idx} className="flex justify-between">
                                                         <span>{item.ingredient?.name}</span>
                                                         <span className="font-mono font-bold text-red-600">
-                                                            -{(item.quantity * Number(produceQty)).toFixed(2)} {item.ingredient?.unit_label}
+                                                            -{formatQuantity(item.quantity * Number(produceQty))} {item.ingredient?.unit_label}
                                                         </span>
                                                     </li>
                                                 ))}
                                                 <li className="pt-2 mt-2 border-t border-yellow-200 flex justify-between font-bold">
                                                     <span>{selectedProduct.name}</span>
                                                     <span className="text-green-600">
-                                                        +{produceQty} {selectedProduct.unit_label}
+                                                        +{formatQuantity(produceQty)} {selectedProduct.unit_label}
                                                     </span>
                                                 </li>
                                             </ul>

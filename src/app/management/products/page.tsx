@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { api } from "@/lib/api";
+import { useRealtime } from "@/context/realtime";
 import { ManagementMetricCard, ManagementPageHero, ManagementSectionCard } from "@/components/management/page-chrome";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -14,7 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Boxes, PackagePlus, Store, Pencil, Moon, Sun, MoonStar } from "lucide-react";
+import { Boxes, PackagePlus, Store, Pencil, Moon, Sun, MoonStar, Zap } from "lucide-react";
 
 interface PublishableProduct {
     id: number;
@@ -51,10 +52,12 @@ function formatCurrency(amount: number) {
 }
 
 export default function ProductsPage() {
+    const { on, off, isConnected } = useRealtime();
     const [publishableProducts, setPublishableProducts] = useState<PublishableProduct[]>([]);
     const [ecommerceProducts, setEcommerceProducts] = useState<EcommerceProduct[]>([]);
     const [loading, setLoading] = useState(true);
     const [publishing, setPublishing] = useState(false);
+    const [recentUpdate, setRecentUpdate] = useState<string | null>(null);
 
     // Publish dialog state
     const [selectedProduct, setSelectedProduct] = useState<PublishableProduct | null>(null);
@@ -84,6 +87,36 @@ export default function ProductsPage() {
     useEffect(() => {
         loadProducts(true);
     }, []);
+
+    // Listen for real-time product updates
+    useEffect(() => {
+        const handleProductChanged = async () => {
+            console.log('[REALTIME] Product changed detected, refreshing...');
+            await loadProducts();
+        };
+
+        const handleEcommerceProductChanged = async (event: any) => {
+            console.log('[REALTIME] E-commerce product changed:', event);
+            setRecentUpdate(event.ecommerce_product_id);
+            setTimeout(() => setRecentUpdate(null), 2000);
+            await loadProducts();
+        };
+
+        const handleStockChanged = async () => {
+            console.log('[REALTIME] Stock changed, refreshing product list...');
+            await loadProducts();
+        };
+
+        on('product_changed', handleProductChanged);
+        on('ecommerce_product_changed', handleEcommerceProductChanged);
+        on('stock_changed', handleStockChanged);
+
+        return () => {
+            off('product_changed', handleProductChanged);
+            off('ecommerce_product_changed', handleEcommerceProductChanged);
+            off('stock_changed', handleStockChanged);
+        };
+    }, [on, off]);
 
     async function loadProducts(initial = false) {
         if (initial) setLoading(true);
@@ -350,9 +383,17 @@ export default function ProductsPage() {
                                     </TableHeader>
                                     <TableBody>
                                         {ecommerceProducts.map((product) => (
-                                            <TableRow key={product.id} className={`hover:bg-[#fbf7ef] ${!product.is_active ? "opacity-60" : ""}`}>
+                                            <TableRow 
+                                                key={product.id} 
+                                                className={`hover:bg-[#fbf7ef] transition-colors duration-500 ${
+                                                    recentUpdate === product.id ? 'bg-green-100' : ''
+                                                } ${!product.is_active ? "opacity-60" : ""}`}
+                                            >
                                                 <TableCell className="font-medium text-[#0b1d15]">
                                                     <div className="flex items-center gap-2">
+                                                        {recentUpdate === product.id && (
+                                                            <Zap className="h-4 w-4 text-green-600" />
+                                                        )}
                                                         {!product.is_active && <Moon className="h-3.5 w-3.5 text-amber-500" />}
                                                         {product.name}
                                                     </div>

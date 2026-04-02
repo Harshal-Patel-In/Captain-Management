@@ -10,6 +10,7 @@ from app.models import (
     Inventory, StockLog, StockAction
 )
 from app.schemas.delivery import DeliveryItemInput, DeliveryStatusResponse
+from app.utils.precision import normalize_quantity
 
 
 class DeliveryService:
@@ -149,19 +150,20 @@ class DeliveryService:
                         detail=f"Inventory not found for product"
                     )
                 
-                if inventory.quantity < delivery.delivered_quantity:
+                current_inventory = normalize_quantity(inventory.quantity)
+                if current_inventory < delivery.delivered_quantity:
                     raise HTTPException(
                         status_code=400,
-                        detail=f"Insufficient stock for {product.name}. Available: {inventory.quantity}"
+                        detail=f"Insufficient stock for {product.name}. Available: {current_inventory}"
                     )
                 
                 # Update order item delivered quantity
                 order_item.delivered_quantity += delivery.delivered_quantity
                 
                 # Update inventory
-                previous_qty = inventory.quantity
-                inventory.quantity -= delivery.delivered_quantity
-                new_qty = inventory.quantity
+                previous_qty = normalize_quantity(inventory.quantity)
+                inventory.quantity = normalize_quantity(previous_qty - delivery.delivered_quantity)
+                new_qty = normalize_quantity(inventory.quantity)
                 
                 # Create stock log with order reference
                 stock_log = StockLog(
@@ -262,7 +264,7 @@ class DeliveryService:
                     Inventory.product_id == product.source_product_id
                 ).first()
                 if inventory:
-                    available_stock = int(inventory.quantity)
+                    available_stock = int(normalize_quantity(inventory.quantity))
             
             result.append(DeliveryStatusResponse(
                 order_item_id=item.id,

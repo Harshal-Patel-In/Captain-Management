@@ -29,6 +29,13 @@ class ProductCreate(ProductBase):
     pass
 
 
+class ProductUpdate(BaseModel):
+    """Schema for updating editable product fields"""
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    category: Optional[str] = Field(None, max_length=255)
+    unit_type: Optional[UnitType] = None
+
+
 class ProductResponse(ProductBase):
     """Schema for product response"""
     id: int

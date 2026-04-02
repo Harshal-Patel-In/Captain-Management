@@ -3,6 +3,7 @@ import { Bodoni_Moda, Inter } from "next/font/google";
 import "./globals.css";
 import { Cursor } from "@/components/ui/cursor";
 import { Grain } from "@/components/ui/grain";
+import { RealtimeProvider } from "@/context/realtime";
 
 const bodoni = Bodoni_Moda({
   variable: "--font-bodoni",
@@ -29,9 +30,11 @@ export default function RootLayout({
       <body
         className={`${bodoni.variable} ${inter.variable} antialiased font-sans`}
       >
-        <Grain />
-        <Cursor />
-        {children}
+        <RealtimeProvider>
+          <Grain />
+          <Cursor />
+          {children}
+        </RealtimeProvider>
       </body>
     </html>
   );

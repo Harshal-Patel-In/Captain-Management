@@ -1,6 +1,6 @@
 """Payment Service - Payment recording and history"""
 from typing import Optional, List
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from uuid import UUID
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -49,10 +49,12 @@ class PaymentService:
                     detail=f"Cannot record payment for order with status {order.status}. Order must be approved first."
                 )
             
+            currency_step = Decimal("0.01")
+
             # Calculate remaining
-            remaining = float(order.total_amount) - float(order.amount_paid)
-            
-            if payment_data.amount > Decimal(str(remaining)):
+            remaining = (order.total_amount - order.amount_paid).quantize(currency_step, rounding=ROUND_HALF_UP)
+
+            if payment_data.amount > remaining:
                 raise HTTPException(
                     status_code=400,
                     detail=f"Payment amount ({payment_data.amount}) exceeds remaining due ({remaining:.2f})"
@@ -65,15 +67,15 @@ class PaymentService:
                 )
             
             # Update order amount_paid
-            previous_paid = float(order.amount_paid)
-            order.amount_paid = Decimal(str(float(order.amount_paid) + float(payment_data.amount)))
-            new_paid = float(order.amount_paid)
+            previous_paid = order.amount_paid
+            order.amount_paid = (order.amount_paid + payment_data.amount).quantize(currency_step, rounding=ROUND_HALF_UP)
+            new_paid = order.amount_paid
             
             # Update payment status
             previous_payment_status = order.payment_status
-            if float(order.amount_paid) >= float(order.total_amount):
+            if order.amount_paid >= order.total_amount:
                 order.payment_status = PaymentStatus.PAID.value.upper()
-            elif float(order.amount_paid) > 0:
+            elif order.amount_paid > 0:
                 order.payment_status = PaymentStatus.PARTIAL.value.upper()
             
             # Create immutable payment log
@@ -93,11 +95,11 @@ class PaymentService:
                 action=OrderAction.PAYMENT_UPDATED.value,
                 performed_by=admin_id,
                 previous_state={
-                    "amount_paid": previous_paid,
+                    "amount_paid": float(previous_paid),
                     "payment_status": previous_payment_status
                 },
                 new_state={
-                    "amount_paid": new_paid,
+                    "amount_paid": float(new_paid),
                     "payment_status": order.payment_status
                 },
                 remarks=f"Payment of {payment_data.amount} received via {payment_data.payment_method}"

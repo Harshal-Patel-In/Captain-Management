@@ -5,6 +5,8 @@ from app.models.product import Product
 from app.models.inventory import Inventory
 from app.models.stock_log import StockLog, StockAction
 from typing import Optional
+from app.services.realtime_service import realtime_manager, schedule_realtime_task
+from app.utils.precision import normalize_positive_quantity, normalize_quantity
 
 
 class StockService:
@@ -14,7 +16,7 @@ class StockService:
     def stock_in(
         db: Session,
         qr_code_value: str,
-        quantity: int,
+        quantity: float,
         remarks: Optional[str] = None
     ) -> dict:
         """
@@ -51,9 +53,11 @@ class StockService:
                     detail="Inventory record not found for product"
                 )
             
-            current_qty = inventory.quantity
+            current_qty = normalize_quantity(inventory.quantity)
             
             # 3. Validate quantity
+            quantity = normalize_positive_quantity(quantity)
+
             if quantity <= 0:
                 raise HTTPException(
                     status_code=400,
@@ -61,7 +65,7 @@ class StockService:
                 )
             
             # Calculate new quantity
-            new_qty = current_qty + quantity
+            new_qty = normalize_quantity(current_qty + quantity)
             
             # 4. Insert immutable log
             log = StockLog(
@@ -81,7 +85,7 @@ class StockService:
             db.commit()
             db.refresh(inventory)
             
-            return {
+            response = {
                 "success": True,
                 "message": "Stock added successfully",
                 "product_id": product.id,
@@ -91,6 +95,40 @@ class StockService:
                 "new_quantity": new_qty,
                 "quantity_changed": quantity
             }
+            
+            # Broadcast real-time event to all connected clients
+            try:
+                schedule_realtime_task(
+                    realtime_manager.broadcast_stock_changed(
+                        product_id=product.id,
+                        product_name=product.name,
+                        new_quantity=new_qty,
+                        previous_quantity=current_qty,
+                        action="in",
+                        remarks=remarks
+                    )
+                )
+                schedule_realtime_task(
+                    realtime_manager.broadcast_log_created(
+                        log_type="stock",
+                        log_data={
+                            "id": log.id,
+                            "action": str(StockAction.IN),
+                            "product_id": product.id,
+                            "product_name": product.name,
+                            "quantity": quantity,
+                            "previous_quantity": current_qty,
+                            "new_quantity": new_qty,
+                            "remarks": remarks,
+                        },
+                    )
+                )
+                schedule_realtime_task(realtime_manager.broadcast_inventory_updated())
+                schedule_realtime_task(realtime_manager.broadcast_analytics_updated())
+            except Exception as e:
+                print(f"[REALTIME] Failed to broadcast stock_in: {e}")
+            
+            return response
             
         except HTTPException:
             db.rollback()
@@ -103,7 +141,7 @@ class StockService:
     def stock_out(
         db: Session,
         qr_code_value: str,
-        quantity: int,
+        quantity: float,
         remarks: Optional[str] = None
     ) -> dict:
         """
@@ -141,9 +179,11 @@ class StockService:
                     detail="Inventory record not found for product"
                 )
             
-            current_qty = inventory.quantity
+            current_qty = normalize_quantity(inventory.quantity)
             
             # 3. Validate quantity
+            quantity = normalize_positive_quantity(quantity)
+
             if quantity <= 0:
                 raise HTTPException(
                     status_code=400,
@@ -151,7 +191,7 @@ class StockService:
                 )
             
             # Calculate new quantity
-            new_qty = current_qty - quantity
+            new_qty = normalize_quantity(current_qty - quantity)
             
             # 4. Validate sufficient stock
             if new_qty < 0:
@@ -178,7 +218,7 @@ class StockService:
             db.commit()
             db.refresh(inventory)
             
-            return {
+            response = {
                 "success": True,
                 "message": "Stock removed successfully",
                 "product_id": product.id,
@@ -188,6 +228,40 @@ class StockService:
                 "new_quantity": new_qty,
                 "quantity_changed": quantity
             }
+            
+            # Broadcast real-time event to all connected clients
+            try:
+                schedule_realtime_task(
+                    realtime_manager.broadcast_stock_changed(
+                        product_id=product.id,
+                        product_name=product.name,
+                        new_quantity=new_qty,
+                        previous_quantity=current_qty,
+                        action="out",
+                        remarks=remarks
+                    )
+                )
+                schedule_realtime_task(
+                    realtime_manager.broadcast_log_created(
+                        log_type="stock",
+                        log_data={
+                            "id": log.id,
+                            "action": str(StockAction.OUT),
+                            "product_id": product.id,
+                            "product_name": product.name,
+                            "quantity": quantity,
+                            "previous_quantity": current_qty,
+                            "new_quantity": new_qty,
+                            "remarks": remarks,
+                        },
+                    )
+                )
+                schedule_realtime_task(realtime_manager.broadcast_inventory_updated())
+                schedule_realtime_task(realtime_manager.broadcast_analytics_updated())
+            except Exception as e:
+                print(f"[REALTIME] Failed to broadcast stock_out: {e}")
+            
+            return response
             
         except HTTPException:
             db.rollback()

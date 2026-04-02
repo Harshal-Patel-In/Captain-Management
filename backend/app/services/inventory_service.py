@@ -3,6 +3,7 @@ from sqlalchemy import join
 from app.models.product import Product
 from app.models.inventory import Inventory
 from typing import List, Optional
+from app.utils.precision import normalize_quantity
 
 
 class InventoryService:
@@ -50,7 +51,7 @@ class InventoryService:
                 "qr_code_value": row.qr_code_value,
                 "unit_type": row.unit_type,
                 "unit_label": row.unit_label,
-                "quantity": row.quantity,
+                "quantity": normalize_quantity(row.quantity or 0),
                 "last_updated": row.last_updated
             }
             for row in results
@@ -83,6 +84,6 @@ class InventoryService:
             "qr_code_value": result.qr_code_value,
             "unit_type": result.unit_type,
             "unit_label": result.unit_label,
-            "quantity": result.quantity,
+            "quantity": normalize_quantity(result.quantity or 0),
             "last_updated": result.last_updated
         }
