@@ -247,6 +247,13 @@ class APIClient {
         }>(`/dashboard/stats?low_stock_threshold=${low_stock_threshold}`);
     }
 
+    async getHealth() {
+        return this.request<{
+            status: "ok" | "degraded";
+            database: "connected" | "unreachable";
+        }>("/health");
+    }
+
     // CSV Exports
     getInventoryCSVUrl() {
         return `${getApiBase()}/export/inventory`;

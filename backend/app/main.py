@@ -1,6 +1,14 @@
-from fastapi import FastAPI
+import logging
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
+from sqlalchemy.exc import OperationalError
 from app.config import settings
+from app.database import SessionLocal
+
+
+logger = logging.getLogger(__name__)
 
 
 def parse_cors_origins(frontend_url: str) -> list[str]:
@@ -35,10 +43,33 @@ async def root():
     }
 
 
+@app.head("/")
+async def root_head():
+    """HEAD probe support for platform health checks."""
+    return Response(status_code=200)
+
+
 @app.get("/health")
 async def health_check():
-    """Detailed health check"""
-    return {"status": "ok", "database": "connected"}
+    """Detailed health check with DB ping."""
+    db = SessionLocal()
+    try:
+        db.execute(text("SELECT 1"))
+        return {"status": "ok", "database": "connected"}
+    except OperationalError:
+        return {"status": "degraded", "database": "unreachable"}
+    finally:
+        db.close()
+
+
+@app.exception_handler(OperationalError)
+async def database_operational_error_handler(_: Request, exc: OperationalError):
+    """Return a graceful response during transient DB outages."""
+    logger.exception("Database operational error", exc_info=exc)
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "Database temporarily unavailable. Please retry in a few seconds."},
+    )
 
 
 # Import and include routers

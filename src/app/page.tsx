@@ -13,6 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 // SWR fetcher function
 const dashboardFetcher = () => api.getDashboardStats(5);
+const healthFetcher = () => api.getHealth();
 
 export default function DashboardPage() {
   const { on, off, isConnected } = useRealtime();
@@ -22,6 +23,14 @@ export default function DashboardPage() {
     revalidateOnFocus: false, // Don't refetch when window regains focus
     dedupingInterval: 30000, // Dedupe requests within 30 seconds
   });
+
+  const { data: health } = useSWR('/health', healthFetcher, {
+    revalidateOnFocus: true,
+    dedupingInterval: 10000,
+  });
+
+  const backendConnected = Boolean(health);
+  const databaseOperational = health?.database === "connected";
 
   // Listen for real-time updates
   useEffect(() => {
@@ -143,13 +152,15 @@ export default function DashboardPage() {
                 <CardContent className="space-y-4">
                   <div className="flex items-center justify-between">
                     <span className="text-sm">Backend API</span>
-                    <span className="text-sm font-medium text-green-600">
-                      {error ? 'Disconnected' : 'Connected'}
+                    <span className={`text-sm font-medium ${backendConnected ? 'text-green-600' : 'text-red-600'}`}>
+                      {backendConnected ? 'Connected' : 'Disconnected'}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm">Database</span>
-                    <span className="text-sm font-medium text-green-600">Operational</span>
+                    <span className={`text-sm font-medium ${databaseOperational ? 'text-green-600' : 'text-red-600'}`}>
+                      {databaseOperational ? 'Operational' : 'Unavailable'}
+                    </span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm">Session</span>
