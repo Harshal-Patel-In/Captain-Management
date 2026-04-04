@@ -65,6 +65,35 @@ class ProductDailySummaryResponse(BaseModel):
     net_change: float
 
 
+class ProductMonthlySummaryResponse(BaseModel):
+    """Current-month stock movement summary for a single product."""
+    product_id: int
+    period_start: date
+    period_end: date
+    stock_in: float
+    stock_out: float
+    net_change: float
+
+
+class LowStockMonthlySummaryItem(BaseModel):
+    """Current quantity and current-month movement for a low-stock product."""
+    product_id: int
+    product_name: str
+    category: Optional[str]
+    unit_label: str
+    quantity: float
+    stock_in: float
+    stock_out: float
+    net_change: float
+
+
+class LowStockMonthlySummaryResponse(BaseModel):
+    """Current-month movement summary for all low-stock products."""
+    period_start: date
+    period_end: date
+    items: list[LowStockMonthlySummaryItem]
+
+
 class AnalyticsFilter(BaseModel):
     """Schema for analytics filtering"""
     start_date: Optional[date] = None

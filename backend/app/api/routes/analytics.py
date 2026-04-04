@@ -5,7 +5,13 @@ from typing import Optional
 from fastapi import HTTPException
 from app.api.deps import get_db
 from app.services.analytics_service import AnalyticsService
-from app.schemas.analytics import StockTrendsResponse, StockConsistencyResponse, ProductDailySummaryResponse
+from app.schemas.analytics import (
+    StockTrendsResponse,
+    StockConsistencyResponse,
+    ProductDailySummaryResponse,
+    ProductMonthlySummaryResponse,
+    LowStockMonthlySummaryResponse,
+)
 
 router = APIRouter()
 
@@ -61,3 +67,29 @@ async def get_product_daily_summary(
         return AnalyticsService.get_product_daily_summary(db, product_id, target_date)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to load product daily summary: {str(exc)}")
+
+
+@router.get("/product-monthly-summary", response_model=ProductMonthlySummaryResponse)
+async def get_product_monthly_summary(
+    product_id: int = Query(..., gt=0, description="Product ID"),
+    target_date: Optional[date] = Query(None, description="Any date in the target month (YYYY-MM-DD), defaults to current month"),
+    db: Session = Depends(get_db)
+):
+    """Get stock-in, stock-out, and net-change for one product in the current calendar month."""
+    try:
+        return AnalyticsService.get_product_monthly_summary(db, product_id, target_date)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to load product monthly summary: {str(exc)}")
+
+
+@router.get("/low-stock-monthly-summary", response_model=LowStockMonthlySummaryResponse)
+async def get_low_stock_monthly_summary(
+    low_stock_threshold: int = Query(5, gt=0, description="Threshold for low stock alerts"),
+    target_date: Optional[date] = Query(None, description="Any date in the target month (YYYY-MM-DD), defaults to current month"),
+    db: Session = Depends(get_db)
+):
+    """Get current quantity and current-month stock movement for all low-stock products."""
+    try:
+        return AnalyticsService.get_low_stock_monthly_summary(db, low_stock_threshold, target_date)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to load low-stock monthly summary: {str(exc)}")

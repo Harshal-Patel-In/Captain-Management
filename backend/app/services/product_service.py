@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import String, cast, or_
 from fastapi import HTTPException
 from app.models.product import Product, UnitType, UnitLabel
 from app.models.inventory import Inventory
@@ -61,12 +62,16 @@ class ProductService:
         limit: int = 100
     ) -> tuple[List[Product], int]:
         """Get products with optional filtering"""
-        query = db.query(Product)
+        query = db.query(Product).outerjoin(Inventory, Inventory.product_id == Product.id)
         
         if search:
+            search_term = search.strip()
             query = query.filter(
-                (Product.name.ilike(f"%{search}%")) |
-                (Product.qr_code_value.ilike(f"%{search}%"))
+                or_(
+                    Product.name.ilike(f"%{search_term}%"),
+                    Product.qr_code_value.ilike(f"%{search_term}%"),
+                    cast(Inventory.quantity, String).ilike(f"%{search_term}%"),
+                )
             )
         
         if category:

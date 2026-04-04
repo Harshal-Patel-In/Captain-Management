@@ -19,7 +19,7 @@ async def create_product(
 
 @router.get("", response_model=ProductList)
 async def get_products(
-    search: Optional[str] = Query(None, description="Search by name or QR code"),
+    search: Optional[str] = Query(None, description="Search by name, QR code, or quantity"),
     category: Optional[str] = Query(None, description="Filter by category"),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),

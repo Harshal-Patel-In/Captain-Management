@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ProtectedRoute } from "@/components/layout/ProtectedRoute";
 import { Header } from "@/components/layout/Header";
@@ -9,21 +9,26 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api } from "@/lib/api";
 import { useRealtime } from "@/context/realtime";
-import { InventoryItem, ProductDailySummary } from "@/lib/types";
+import { InventoryItem, ProductMonthlySummary } from "@/lib/types";
+import { RealtimeEvent } from "@/lib/realtime";
 import { formatQuantity } from "@/lib/utils";
-import { ArrowDownCircle, ArrowUpCircle, ArrowUpDown, Download, Loader2, Search, X, Zap } from "lucide-react";
+import { ArrowDownCircle, ArrowUpCircle, ArrowUpDown, Download, Loader2, X, Zap } from "lucide-react";
 
 const TOOLTIP_AUTO_HIDE_MS = 6000;
 
 export default function InventoryPage() {
-    const { on, off, isConnected } = useRealtime();
+    const { on, off } = useRealtime();
     const [inventory, setInventory] = useState<InventoryItem[]>([]);
     const [loading, setLoading] = useState(true);
+    const [isFilterLoading, setIsFilterLoading] = useState(false);
     const [search, setSearch] = useState("");
+    const [category, setCategory] = useState("all");
+    const [categories, setCategories] = useState<string[]>([]);
     const [stockInDialogOpen, setStockInDialogOpen] = useState(false);
     const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
     const [stockOperation, setStockOperation] = useState<"in" | "out">("in");
@@ -33,25 +38,76 @@ export default function InventoryPage() {
     const [stockInMessage, setStockInMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
     const [recentUpdate, setRecentUpdate] = useState<number | null>(null); // Product ID recently updated
     const [activeTooltipProductId, setActiveTooltipProductId] = useState<number | null>(null);
-    const [dailySummaryByProduct, setDailySummaryByProduct] = useState<Record<number, ProductDailySummary>>({});
-    const [dailySummaryLoadingByProduct, setDailySummaryLoadingByProduct] = useState<Record<number, boolean>>({});
+    const [monthlySummaryByProduct, setMonthlySummaryByProduct] = useState<Record<number, ProductMonthlySummary>>({});
+    const [monthlySummaryLoadingByProduct, setMonthlySummaryLoadingByProduct] = useState<Record<number, boolean>>({});
     const [tooltipPosition, setTooltipPosition] = useState<{ top: number; left: number } | null>(null);
     const [isTooltipHovered, setIsTooltipHovered] = useState(false);
+    const hasLoadedRef = useRef(false);
+
+    const loadInventory = useCallback(async (searchTerm?: string, categoryFilter?: string) => {
+        const isInitialRequest = !hasLoadedRef.current;
+        if (isInitialRequest) {
+            setLoading(true);
+        } else {
+            setIsFilterLoading(true);
+        }
+
+        try {
+            const data = await api.getInventory(searchTerm, categoryFilter);
+            setInventory(data.items || []);
+        } catch (err) {
+            console.error("Failed to load inventory:", err);
+        } finally {
+            if (isInitialRequest) {
+                setLoading(false);
+                hasLoadedRef.current = true;
+            }
+            setIsFilterLoading(false);
+        }
+    }, []);
 
     useEffect(() => {
-        loadInventory();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+        const loadCategories = async () => {
+            try {
+                const data = await api.getProducts();
+                const uniqueCategories = Array.from(
+                    new Set(
+                        (data.products || [])
+                            .map((product) => product.category?.trim())
+                            .filter((value): value is string => Boolean(value)),
+                    ),
+                ).sort((a, b) => a.localeCompare(b));
+                setCategories(uniqueCategories);
+            } catch (err) {
+                console.error("Failed to load categories:", err);
+            }
+        };
+
+        void loadCategories();
     }, []);
+
+    useEffect(() => {
+        const activeCategory = category === "all" ? undefined : category;
+        const debounceTimer = window.setTimeout(() => {
+            void loadInventory(search.trim() || undefined, activeCategory);
+        }, 250);
+
+        return () => window.clearTimeout(debounceTimer);
+    }, [search, category, loadInventory]);
 
     // Listen for real-time stock updates
     useEffect(() => {
-        const handleStockChanged = async (event: any) => {
+        const handleStockChanged = async (event: RealtimeEvent) => {
             console.log('[REALTIME] Stock changed:', event);
+            const updatedProductId = typeof event.product_id === "number" ? event.product_id : null;
             // Highlight the updated item
-            setRecentUpdate(event.product_id);
+            if (updatedProductId !== null) {
+                setRecentUpdate(updatedProductId);
+            }
             setTimeout(() => setRecentUpdate(null), 2000);
             // Refresh inventory
-            await loadInventory();
+            const activeCategory = category === "all" ? undefined : category;
+            await loadInventory(search.trim() || undefined, activeCategory);
         };
 
         on('stock_changed', handleStockChanged);
@@ -59,18 +115,7 @@ export default function InventoryPage() {
         return () => {
             off('stock_changed', handleStockChanged);
         };
-    }, [on, off]);
-
-    const loadInventory = async () => {
-        try {
-            const data = await api.getInventory(search);
-            setInventory(data.items || []);
-        } catch (err) {
-            console.error("Failed to load inventory:", err);
-        } finally {
-            setLoading(false);
-        }
-    };
+    }, [on, off, search, category, loadInventory]);
 
     const handleExport = () => {
         window.open(api.getInventoryCSVUrl(), "_blank");
@@ -93,7 +138,7 @@ export default function InventoryPage() {
         setStockInMessage(null);
     };
 
-    const handleToggleDailyTooltip = async (event: React.MouseEvent<HTMLElement>, productId: number) => {
+    const handleToggleMonthlyTooltip = async (event: React.MouseEvent<HTMLElement>, productId: number) => {
         event.stopPropagation();
 
         if (activeTooltipProductId === productId) {
@@ -120,18 +165,18 @@ export default function InventoryPage() {
 
         setActiveTooltipProductId(productId);
 
-        if (dailySummaryByProduct[productId] || dailySummaryLoadingByProduct[productId]) {
+        if (monthlySummaryByProduct[productId] || monthlySummaryLoadingByProduct[productId]) {
             return;
         }
 
-        setDailySummaryLoadingByProduct((prev) => ({ ...prev, [productId]: true }));
+        setMonthlySummaryLoadingByProduct((prev) => ({ ...prev, [productId]: true }));
         try {
-            const summary = await api.getProductDailySummary(productId);
-            setDailySummaryByProduct((prev) => ({ ...prev, [productId]: summary }));
+            const summary = await api.getProductMonthlySummary(productId);
+            setMonthlySummaryByProduct((prev) => ({ ...prev, [productId]: summary }));
         } catch (err) {
-            console.error("Failed to load product daily summary:", err);
+            console.error("Failed to load product monthly summary:", err);
         } finally {
-            setDailySummaryLoadingByProduct((prev) => ({ ...prev, [productId]: false }));
+            setMonthlySummaryLoadingByProduct((prev) => ({ ...prev, [productId]: false }));
         }
     };
 
@@ -156,7 +201,8 @@ export default function InventoryPage() {
         }
 
         if (selectedItem.unit_type === "piece" && !Number.isInteger(quantity)) {
-            setStockInMessage({ type: "error", text: "This product accepts whole numbers only." });
+            const message = `You entered floating number for piece unit type product ${selectedItem.product_name}.`;
+            setStockInMessage({ type: "error", text: message });
             return;
         }
 
@@ -179,14 +225,18 @@ export default function InventoryPage() {
                 type: "success",
                 text: `${selectedItem.product_name} stock ${stockOperation === "in" ? "in" : "out"} by ${quantity}.`,
             });
-            await loadInventory();
+            const activeCategory = category === "all" ? undefined : category;
+            await loadInventory(search.trim() || undefined, activeCategory);
             setTimeout(() => {
                 handleCloseStockInDialog();
             }, 800);
-        } catch (err: any) {
+        } catch (err: unknown) {
+            const errorMessage = err instanceof Error
+                ? err.message
+                : `Failed to stock ${stockOperation === "in" ? "in" : "out"} product.`;
             setStockInMessage({
                 type: "error",
-                text: err.message || `Failed to stock ${stockOperation === "in" ? "in" : "out"} product.`,
+                text: errorMessage,
             });
         } finally {
             setStockInLoading(false);
@@ -213,17 +263,34 @@ export default function InventoryPage() {
                         <Card>
                             <CardHeader>
                                 <CardTitle>Stock Levels</CardTitle>
-                                <div className="flex gap-2 mt-4">
+                                <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_220px]">
                                     <Input
-                                        placeholder="Search products..."
+                                        placeholder="Search by product, QR, or quantity..."
                                         value={search}
                                         onChange={(e) => setSearch(e.target.value)}
-                                        className="max-w-sm"
+                                        className="w-full"
                                     />
-                                    <Button onClick={loadInventory} className="gap-2">
-                                        <Search className="h-4 w-4" />
-                                        Search
-                                    </Button>
+                                    <Select value={category} onValueChange={setCategory}>
+                                        <SelectTrigger className="border-[#0b1d15]/25 bg-[#e7f2ec] text-[#0b1d15]">
+                                            <SelectValue placeholder="All categories" />
+                                        </SelectTrigger>
+                                        <SelectContent className="border-[#0b1d15]/20 bg-[#f8fbf9]">
+                                            <SelectItem value="all" className="text-[#0b1d15]">All categories</SelectItem>
+                                            {categories.map((itemCategory) => (
+                                                <SelectItem key={itemCategory} value={itemCategory} className="text-[#0b1d15]">
+                                                    {itemCategory}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="mt-2 min-h-5 text-xs text-gray-500">
+                                    {isFilterLoading && (
+                                        <span className="inline-flex items-center gap-1.5">
+                                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                            Updating results...
+                                        </span>
+                                    )}
                                 </div>
                             </CardHeader>
                             <CardContent>
@@ -242,7 +309,7 @@ export default function InventoryPage() {
                                                             <button
                                                                 type="button"
                                                                 className="font-medium text-[#0b1d15] text-left underline-offset-2 hover:underline"
-                                                                onClick={(event) => handleToggleDailyTooltip(event, item.product_id)}
+                                                                onClick={(event) => handleToggleMonthlyTooltip(event, item.product_id)}
                                                             >
                                                                 {item.product_name}
                                                             </button>
@@ -304,7 +371,7 @@ export default function InventoryPage() {
                                                             <button
                                                                 type="button"
                                                                 className="text-left underline-offset-2 hover:underline"
-                                                                onClick={(event) => handleToggleDailyTooltip(event, item.product_id)}
+                                                                onClick={(event) => handleToggleMonthlyTooltip(event, item.product_id)}
                                                             >
                                                                 {item.product_name}
                                                             </button>
@@ -356,29 +423,32 @@ export default function InventoryPage() {
                                     onMouseEnter={() => setIsTooltipHovered(true)}
                                     onMouseLeave={() => setIsTooltipHovered(false)}
                                 >
-                                    <div className="mb-2 font-semibold text-[#0b1d15]">Today Movement</div>
-                                    {dailySummaryLoadingByProduct[activeTooltipProductId] ? (
+                                    <div className="mb-2 font-semibold text-[#0b1d15]">Current Month Movement</div>
+                                    {monthlySummaryLoadingByProduct[activeTooltipProductId] ? (
                                         <div className="text-gray-500">Loading...</div>
-                                    ) : dailySummaryByProduct[activeTooltipProductId] ? (
+                                    ) : monthlySummaryByProduct[activeTooltipProductId] ? (
                                         <div className="space-y-1">
+                                            <div className="text-[11px] text-gray-500 mb-1">
+                                                {new Date(monthlySummaryByProduct[activeTooltipProductId].period_start).toLocaleDateString(undefined, { month: "long", year: "numeric" })}
+                                            </div>
                                             <div className="flex items-center justify-between gap-4">
                                                 <span className="text-gray-600">Stock In</span>
-                                                <span className="font-mono text-green-700">+{formatQuantity(dailySummaryByProduct[activeTooltipProductId].stock_in)}</span>
+                                                <span className="font-mono text-green-700">+{formatQuantity(monthlySummaryByProduct[activeTooltipProductId].stock_in)}</span>
                                             </div>
                                             <div className="flex items-center justify-between gap-4">
                                                 <span className="text-gray-600">Stock Out</span>
-                                                <span className="font-mono text-red-700">-{formatQuantity(dailySummaryByProduct[activeTooltipProductId].stock_out)}</span>
+                                                <span className="font-mono text-red-700">-{formatQuantity(monthlySummaryByProduct[activeTooltipProductId].stock_out)}</span>
                                             </div>
                                             <div className="mt-1 border-t pt-1 flex items-center justify-between gap-4">
                                                 <span className="text-gray-700 font-semibold">Net Change</span>
-                                                <span className={`font-mono font-semibold ${dailySummaryByProduct[activeTooltipProductId].net_change >= 0 ? "text-green-700" : "text-red-700"}`}>
-                                                    {dailySummaryByProduct[activeTooltipProductId].net_change >= 0 ? "+" : ""}
-                                                    {formatQuantity(dailySummaryByProduct[activeTooltipProductId].net_change)}
+                                                <span className={`font-mono font-semibold ${monthlySummaryByProduct[activeTooltipProductId].net_change >= 0 ? "text-green-700" : "text-red-700"}`}>
+                                                    {monthlySummaryByProduct[activeTooltipProductId].net_change >= 0 ? "+" : ""}
+                                                    {formatQuantity(monthlySummaryByProduct[activeTooltipProductId].net_change)}
                                                 </span>
                                             </div>
                                         </div>
                                     ) : (
-                                        <div className="text-gray-500">No movement data for today.</div>
+                                        <div className="text-gray-500">No movement data for this month.</div>
                                     )}
                                 </div>
                             </>,

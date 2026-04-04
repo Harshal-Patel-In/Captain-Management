@@ -1,12 +1,15 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import useSWR from "swr";
 import { ProtectedRoute } from "@/components/layout/ProtectedRoute";
 import { Header } from "@/components/layout/Header";
 import { PageTransition } from "@/components/layout/PageTransition";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
+import { LowStockMonthlySummaryResponse } from "@/lib/types";
+import { formatQuantity } from "@/lib/utils";
 import { useRealtime } from "@/context/realtime";
 import { Package, TrendingUp, TrendingDown, AlertTriangle, Zap } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -17,9 +20,13 @@ const healthFetcher = () => api.getHealth();
 
 export default function DashboardPage() {
   const { on, off, isConnected } = useRealtime();
+  const [lowStockDialogOpen, setLowStockDialogOpen] = useState(false);
+  const [lowStockLoading, setLowStockLoading] = useState(false);
+  const [lowStockError, setLowStockError] = useState<string | null>(null);
+  const [lowStockSummary, setLowStockSummary] = useState<LowStockMonthlySummaryResponse | null>(null);
   
   // Use SWR for automatic caching and revalidation
-  const { data: stats, error, isLoading, mutate } = useSWR('/dashboard/stats', dashboardFetcher, {
+  const { data: stats, isLoading, mutate } = useSWR('/dashboard/stats', dashboardFetcher, {
     revalidateOnFocus: false, // Don't refetch when window regains focus
     dedupingInterval: 30000, // Dedupe requests within 30 seconds
   });
@@ -31,6 +38,21 @@ export default function DashboardPage() {
 
   const backendConnected = Boolean(health);
   const databaseOperational = health?.database === "connected";
+
+  const handleOpenLowStockDialog = async () => {
+    setLowStockDialogOpen(true);
+    setLowStockLoading(true);
+    setLowStockError(null);
+    try {
+      const data = await api.getLowStockMonthlySummary(5);
+      setLowStockSummary(data);
+    } catch (err) {
+      console.error("Failed to load low-stock monthly summary:", err);
+      setLowStockError("Failed to load low stock movement.");
+    } finally {
+      setLowStockLoading(false);
+    }
+  };
 
   // Listen for real-time updates
   useEffect(() => {
@@ -95,18 +117,20 @@ export default function DashboardPage() {
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Low Stock Items</CardTitle>
-                  <AlertTriangle className="h-4 w-4 text-orange-600" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-orange-600">
-                    {isLoading ? <Skeleton className="h-8 w-20" /> : stats?.low_stock_count || 0}
-                  </div>
-                  <p className="text-xs text-gray-600 mt-1">Below threshold (5)</p>
-                </CardContent>
-              </Card>
+              <button type="button" onClick={handleOpenLowStockDialog} className="text-left">
+                <Card className="transition-shadow hover:shadow-md">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Low Stock Items</CardTitle>
+                    <AlertTriangle className="h-4 w-4 text-orange-600" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-orange-600">
+                      {isLoading ? <Skeleton className="h-8 w-20" /> : stats?.low_stock_count || 0}
+                    </div>
+                    <p className="text-xs text-gray-600 mt-1">Below threshold (5), tap to view month movement</p>
+                  </CardContent>
+                </Card>
+              </button>
 
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -178,6 +202,53 @@ export default function DashboardPage() {
                 </CardContent>
               </Card>
             </div>
+
+            <Dialog open={lowStockDialogOpen} onOpenChange={setLowStockDialogOpen}>
+              <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-hidden">
+                <DialogHeader>
+                  <DialogTitle>All Low Stock Products</DialogTitle>
+                  <DialogDescription>
+                    Showing all currently low-stock products. Stock In/Out/Net values are for {lowStockSummary
+                      ? new Date(lowStockSummary.period_start).toLocaleDateString(undefined, { month: "long", year: "numeric" })
+                      : "the current calendar month"}.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-3 overflow-y-auto pr-1">
+                  {lowStockLoading && <p className="text-sm text-gray-600">Loading...</p>}
+                  {lowStockError && <p className="text-sm text-red-600">{lowStockError}</p>}
+                  {!lowStockLoading && !lowStockError && lowStockSummary && (
+                    <p className="text-xs text-gray-500">Total low-stock products: {lowStockSummary.items.length}</p>
+                  )}
+                  {!lowStockLoading && !lowStockError && lowStockSummary?.items.length === 0 && (
+                    <p className="text-sm text-gray-600">No low stock products found.</p>
+                  )}
+                  {lowStockSummary?.items.map((item) => (
+                    <div key={item.product_id} className="rounded-lg border p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-medium text-[#0b1d15]">{item.product_name}</p>
+                          <p className="text-xs text-gray-500">{item.category || "Uncategorized"}</p>
+                        </div>
+                        <p className="text-sm font-semibold">
+                          {formatQuantity(item.quantity)} {item.unit_label}
+                        </p>
+                      </div>
+                      <div className="mt-2 grid grid-cols-3 gap-2 text-xs sm:text-sm">
+                        <div className="rounded-md bg-green-50 p-2 text-green-700">
+                          In: +{formatQuantity(item.stock_in)}
+                        </div>
+                        <div className="rounded-md bg-red-50 p-2 text-red-700">
+                          Out: -{formatQuantity(item.stock_out)}
+                        </div>
+                        <div className={`rounded-md p-2 ${item.net_change >= 0 ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>
+                          Net: {item.net_change >= 0 ? "+" : ""}{formatQuantity(item.net_change)}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </DialogContent>
+            </Dialog>
           </PageTransition>
         </main>
       </div>

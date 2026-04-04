@@ -10,7 +10,7 @@ router = APIRouter()
 
 @router.get("", response_model=InventoryList)
 async def get_inventory(
-    search: Optional[str] = Query(None, description="Search by product name or QR code"),
+    search: Optional[str] = Query(None, description="Search by product name, QR code, or quantity"),
     category: Optional[str] = Query(None, description="Filter by category"),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ProtectedRoute } from "@/components/layout/ProtectedRoute";
 import { Header } from "@/components/layout/Header";
 import { PageTransition } from "@/components/layout/PageTransition";
@@ -14,7 +14,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api } from "@/lib/api";
 import { Product } from "@/lib/types";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { formatQuantity } from "@/lib/utils";
+import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 
 const UNIT_TYPE_TO_LABEL = {
     piece: "pcs",
@@ -30,6 +31,11 @@ const getErrorMessage = (err: unknown, fallbackMessage: string) => {
 export default function ProductsPage() {
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
+    const [isFilterLoading, setIsFilterLoading] = useState(false);
+    const [search, setSearch] = useState("");
+    const [category, setCategory] = useState("all");
+    const [categories, setCategories] = useState<string[]>([]);
+    const [quantityByProductId, setQuantityByProductId] = useState<Record<number, number>>({});
     const [dialogOpen, setDialogOpen] = useState(false);
     const [editDialogOpen, setEditDialogOpen] = useState(false);
     const [productToEdit, setProductToEdit] = useState<Product | null>(null);
@@ -64,21 +70,59 @@ export default function ProductsPage() {
     const [productToDelete, setProductToDelete] = useState<Product | null>(null);
     const [deleteError, setDeleteError] = useState("");
     const [statusMessage, setStatusMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+    const hasLoadedRef = useRef(false);
 
-    useEffect(() => {
-        loadProducts();
-    }, []);
+    const loadProducts = useCallback(async (searchTerm?: string, categoryFilter?: string) => {
+        const isInitialRequest = !hasLoadedRef.current;
+        if (isInitialRequest) {
+            setLoading(true);
+        } else {
+            setIsFilterLoading(true);
+        }
 
-    const loadProducts = async () => {
         try {
-            const data = await api.getProducts();
-            setProducts(data.products || []);
+            const [productsData, inventoryData] = await Promise.all([
+                api.getProducts(searchTerm, categoryFilter),
+                api.getInventory(searchTerm, categoryFilter),
+            ]);
+            const fetchedProducts = productsData.products || [];
+            setProducts(fetchedProducts);
+
+            const quantityMap: Record<number, number> = {};
+            for (const item of inventoryData.items || []) {
+                quantityMap[item.product_id] = item.quantity;
+            }
+            setQuantityByProductId(quantityMap);
+
+            if (!searchTerm && !categoryFilter) {
+                const uniqueCategories = Array.from(
+                    new Set(
+                        fetchedProducts
+                            .map((product) => product.category?.trim())
+                            .filter((value): value is string => Boolean(value)),
+                    ),
+                ).sort((a, b) => a.localeCompare(b));
+                setCategories(uniqueCategories);
+            }
         } catch (err: unknown) {
             console.error("Failed to load products:", err);
         } finally {
-            setLoading(false);
+            if (isInitialRequest) {
+                setLoading(false);
+                hasLoadedRef.current = true;
+            }
+            setIsFilterLoading(false);
         }
-    };
+    }, []);
+
+    useEffect(() => {
+        const activeCategory = category === "all" ? undefined : category;
+        const debounceTimer = window.setTimeout(() => {
+            void loadProducts(search.trim() || undefined, activeCategory);
+        }, 250);
+
+        return () => window.clearTimeout(debounceTimer);
+    }, [search, category, loadProducts]);
 
     const handleCreate = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -95,7 +139,8 @@ export default function ProductsPage() {
                 unit_type: "piece",
                 unit_label: "pcs"
             });
-            await loadProducts();
+            const activeCategory = category === "all" ? undefined : category;
+            await loadProducts(search.trim() || undefined, activeCategory);
             setStatusMessage({ type: "success", text: "Product created successfully." });
         } catch (err: unknown) {
             setError(getErrorMessage(err, "Failed to create product"));
@@ -152,7 +197,8 @@ export default function ProductsPage() {
 
             setEditDialogOpen(false);
             setProductToEdit(null);
-            await loadProducts();
+            const activeCategory = category === "all" ? undefined : category;
+            await loadProducts(search.trim() || undefined, activeCategory);
             setStatusMessage({ type: "success", text: "Product updated successfully." });
         } catch (err: unknown) {
             setEditError(getErrorMessage(err, "Failed to update product"));
@@ -395,6 +441,35 @@ export default function ProductsPage() {
                         <Card>
                             <CardHeader>
                                 <CardTitle>All Products ({products.length})</CardTitle>
+                                <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_220px]">
+                                    <Input
+                                        placeholder="Search by product, QR, or quantity..."
+                                        value={search}
+                                        onChange={(e) => setSearch(e.target.value)}
+                                        className="w-full"
+                                    />
+                                    <Select value={category} onValueChange={setCategory}>
+                                        <SelectTrigger className="border-[#0b1d15]/25 bg-[#e7f2ec] text-[#0b1d15]">
+                                            <SelectValue placeholder="All categories" />
+                                        </SelectTrigger>
+                                        <SelectContent className="border-[#0b1d15]/20 bg-[#f8fbf9]">
+                                            <SelectItem value="all" className="text-[#0b1d15]">All categories</SelectItem>
+                                            {categories.map((itemCategory) => (
+                                                <SelectItem key={itemCategory} value={itemCategory} className="text-[#0b1d15]">
+                                                    {itemCategory}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="mt-2 min-h-5 text-xs text-gray-500">
+                                    {isFilterLoading && (
+                                        <span className="inline-flex items-center gap-1.5">
+                                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                            Updating results...
+                                        </span>
+                                    )}
+                                </div>
                             </CardHeader>
                             <CardContent>
                                 {loading ? (
@@ -435,6 +510,9 @@ export default function ProductsPage() {
                                                         <span className="capitalize">{product.unit_label} ({product.unit_type})</span>
                                                         <span className="font-mono">{product.qr_code_value}</span>
                                                     </div>
+                                                    <div className="text-sm text-gray-600">
+                                                        Quantity: {quantityByProductId[product.id] !== undefined ? `${formatQuantity(quantityByProductId[product.id])} ${product.unit_label}` : `0 ${product.unit_label}`}
+                                                    </div>
                                                     <div className="text-xs text-gray-400">Created {new Date(product.created_at).toLocaleDateString()}</div>
                                                 </div>
                                             ))}
@@ -449,6 +527,7 @@ export default function ProductsPage() {
                                                 <TableHead>Category</TableHead>
                                                 <TableHead>Unit</TableHead>
                                                 <TableHead>QR Code</TableHead>
+                                                <TableHead className="text-right">Quantity</TableHead>
                                                 <TableHead>Created</TableHead>
                                                 <TableHead className="text-right">Actions</TableHead>
                                             </TableRow>
@@ -461,6 +540,9 @@ export default function ProductsPage() {
                                                     <TableCell>{product.category || "-"}</TableCell>
                                                     <TableCell className="capitalize">{product.unit_label} ({product.unit_type})</TableCell>
                                                     <TableCell className="font-mono text-sm">{product.qr_code_value}</TableCell>
+                                                    <TableCell className="text-right font-semibold">
+                                                        {quantityByProductId[product.id] !== undefined ? `${formatQuantity(quantityByProductId[product.id])} ${product.unit_label}` : `0 ${product.unit_label}`}
+                                                    </TableCell>
                                                     <TableCell>{new Date(product.created_at).toLocaleDateString()}</TableCell>
                                                     <TableCell className="text-right">
                                                         <div className="inline-flex items-center gap-1">

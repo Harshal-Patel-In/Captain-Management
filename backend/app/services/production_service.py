@@ -12,6 +12,15 @@ from app.utils.precision import normalize_positive_quantity, normalize_quantity
 
 class ProductionService:
     @staticmethod
+    def _validate_piece_quantity(product: Product, quantity: float):
+        unit_type_value = product.unit_type.value if hasattr(product.unit_type, "value") else str(product.unit_type)
+        if unit_type_value == "piece" and not float(quantity).is_integer():
+            raise HTTPException(
+                status_code=400,
+                detail=f"You entered floating number for piece unit type product {product.name}.",
+            )
+
+    @staticmethod
     def get_recipe(db: Session, product_id: int):
         return db.query(Recipe).filter(Recipe.product_id == product_id).all()
 
@@ -56,29 +65,35 @@ class ProductionService:
         
         for item in recipe_items:
             required_qty = normalize_positive_quantity(item.quantity * request.quantity)
+            ingredient_product = db.query(Product).get(item.ingredient_id)
+
+            if not ingredient_product:
+                raise HTTPException(status_code=404, detail=f"Ingredient with ID {item.ingredient_id} not found")
+
+            ProductionService._validate_piece_quantity(ingredient_product, required_qty)
             
             # Check stock
             inventory = db.query(Inventory).filter(Inventory.product_id == item.ingredient_id).first()
             current_qty = normalize_quantity(inventory.quantity) if inventory else 0.0
             
             if current_qty < required_qty:
-                sub_product = db.query(Product).get(item.ingredient_id)
-                name = sub_product.name if sub_product else f"ID {item.ingredient_id}"
                 raise HTTPException(
                     status_code=400, 
-                    detail=f"Insufficient stock for ingredient '{name}'. Required: {required_qty}, Available: {current_qty}"
+                    detail=f"Insufficient stock for ingredient '{ingredient_product.name}'. Required: {required_qty}, Available: {current_qty}"
                 )
             
             consumed_log.append({
                 "ingredient_id": item.ingredient_id,
                 "required_qty": required_qty,
-                "product": item.ingredient
+                "product": ingredient_product
             })
 
         # 3. Execute Deduction (Stock Out for Ingredients)
         # Fetch target product for remarks
         target_product = db.query(Product).get(request.product_id)
         product_name = target_product.name if target_product else str(request.product_id)
+        if target_product:
+            ProductionService._validate_piece_quantity(target_product, request.quantity)
 
         try:
             for log in consumed_log:

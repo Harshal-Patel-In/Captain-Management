@@ -17,7 +17,6 @@ import { Plus, Trash2, ArrowRight, Package, AlertTriangle } from "lucide-react";
 
 export default function ProductionPage() {
     const [products, setProducts] = useState<Product[]>([]);
-    const [loading, setLoading] = useState(true);
     const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
     const [produceQty, setProduceQty] = useState<number | string>(1);
 
@@ -34,10 +33,6 @@ export default function ProductionPage() {
     const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
     const [errorMessage, setErrorMessage] = useState("");
 
-    useEffect(() => {
-        loadData();
-    }, []);
-
     const loadData = async () => {
         try {
             const data = await api.getProducts();
@@ -45,10 +40,16 @@ export default function ProductionPage() {
             setAvailableIngredients(data.products || []); // All products can be ingredients
         } catch (err) {
             console.error(err);
-        } finally {
-            setLoading(false);
         }
     };
+
+    useEffect(() => {
+        const timer = window.setTimeout(() => {
+            void loadData();
+        }, 0);
+
+        return () => window.clearTimeout(timer);
+    }, []);
 
     const handleProductSelect = async (productId: string) => {
         const product = products.find(p => p.id.toString() === productId);
@@ -86,6 +87,12 @@ export default function ProductionPage() {
         const ingredient = products.find(p => p.id.toString() === selectedIngredientId);
         if (!ingredient) return;
 
+        if (ingredient.unit_type === "piece" && !Number.isInteger(Number(ingredientQty))) {
+            const popupMessage = `You entered floating number for piece unit type product ${ingredient.name}.`;
+            window.alert(popupMessage);
+            return;
+        }
+
         // Check if already exists
         if (recipeItems.some(i => i.ingredient_id === ingredient.id)) {
             alert("Ingredient already added");
@@ -117,6 +124,14 @@ export default function ProductionPage() {
             return;
         }
 
+        if (selectedProduct.unit_type === "piece" && !Number.isInteger(Number(produceQty))) {
+            const popupMessage = `You entered floating number for piece unit type product ${selectedProduct.name}.`;
+            setErrorMessage(popupMessage);
+            setStatus("error");
+            window.alert(popupMessage);
+            return;
+        }
+
         setStatus("loading");
         setErrorMessage("");
 
@@ -141,11 +156,13 @@ export default function ProductionPage() {
                 setRecipeItems([]);
             }, 2000);
 
-        } catch (err: any) {
+        } catch (err: unknown) {
             setStatus("error");
-            setErrorMessage(err.message || "Production failed");
+            setErrorMessage(err instanceof Error ? err.message : "Production failed");
         }
     };
+
+    const selectedIngredient = products.find((p) => p.id.toString() === selectedIngredientId);
 
     return (
         <ProtectedRoute>
@@ -216,7 +233,8 @@ export default function ProductionPage() {
                                                         <Label className="text-xs">Qty (per 1 {selectedProduct.unit_label})</Label>
                                                         <Input
                                                             type="number"
-                                                            step="0.001"
+                                                            min={selectedIngredient?.unit_type === "piece" ? "1" : "0.001"}
+                                                            step={selectedIngredient?.unit_type === "piece" ? "1" : "0.001"}
                                                             className="h-9"
                                                             value={ingredientQty}
                                                             onChange={e => setIngredientQty(e.target.value === "" ? "" : parseFloat(e.target.value))}
@@ -278,12 +296,16 @@ export default function ProductionPage() {
                                             <div className="flex items-center gap-4 mt-2">
                                                 <Input
                                                     type="number"
-                                                    step="0.001"
+                                                    min={selectedProduct.unit_type === "piece" ? "1" : "0.001"}
+                                                    step={selectedProduct.unit_type === "piece" ? "1" : "0.001"}
                                                     value={produceQty}
                                                     onChange={e => setProduceQty(e.target.value === "" ? "" : parseFloat(e.target.value))}
                                                     className="text-2xl h-14 font-semibold"
                                                 />
                                             </div>
+                                            {selectedProduct.unit_type === "piece" && (
+                                                <p className="mt-1 text-xs text-gray-500">Whole numbers only for piece-based products.</p>
+                                            )}
                                         </div>
 
                                         <div className="bg-yellow-50 p-4 rounded-md border border-yellow-100">

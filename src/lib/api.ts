@@ -1,5 +1,5 @@
 // API client for backend communication
-import { ProductsResponse, InventoryResponse, LogsResponse, StockTrendsResponse, Product, RecipeResponse, UserListItem, UserDetail, UserStats, ConversationListItem, ChatMessage, AvailableUser, ProductDailySummary } from "./types";
+import { ProductsResponse, InventoryResponse, LogsResponse, StockTrendsResponse, Product, RecipeResponse, UserListItem, UserDetail, UserStats, ConversationListItem, ChatMessage, AvailableUser, ProductDailySummary, ProductMonthlySummary, LowStockMonthlySummaryResponse } from "./types";
 
 // Dynamic API base URL that works for both localhost and network access
 const getApiBase = () => {
@@ -235,6 +235,22 @@ class APIClient {
         if (target_date) params.append("target_date", target_date);
 
         return this.request<ProductDailySummary>(`/analytics/product-daily-summary?${params}`);
+    }
+
+    async getProductMonthlySummary(product_id: number, target_date?: string): Promise<ProductMonthlySummary> {
+        const params = new URLSearchParams();
+        params.append("product_id", product_id.toString());
+        if (target_date) params.append("target_date", target_date);
+
+        return this.request<ProductMonthlySummary>(`/analytics/product-monthly-summary?${params}`);
+    }
+
+    async getLowStockMonthlySummary(low_stock_threshold: number = 5, target_date?: string): Promise<LowStockMonthlySummaryResponse> {
+        const params = new URLSearchParams();
+        params.append("low_stock_threshold", low_stock_threshold.toString());
+        if (target_date) params.append("target_date", target_date);
+
+        return this.request<LowStockMonthlySummaryResponse>(`/analytics/low-stock-monthly-summary?${params}`);
     }
 
     // Dashboard (Optimized)

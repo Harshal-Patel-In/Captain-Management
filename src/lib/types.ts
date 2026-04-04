@@ -70,6 +70,7 @@ export interface StockTrends {
 // API Response types
 export interface ProductsResponse {
     products: Product[];
+    total: number;
 }
 
 export interface InventoryResponse {
@@ -89,6 +90,32 @@ export interface ProductDailySummary {
     stock_in: number;
     stock_out: number;
     net_change: number;
+}
+
+export interface ProductMonthlySummary {
+    product_id: number;
+    period_start: string;
+    period_end: string;
+    stock_in: number;
+    stock_out: number;
+    net_change: number;
+}
+
+export interface LowStockMonthlySummaryItem {
+    product_id: number;
+    product_name: string;
+    category: string | null;
+    unit_label: string;
+    quantity: number;
+    stock_in: number;
+    stock_out: number;
+    net_change: number;
+}
+
+export interface LowStockMonthlySummaryResponse {
+    period_start: string;
+    period_end: string;
+    items: LowStockMonthlySummaryItem[];
 }
 
 // Recipe Types

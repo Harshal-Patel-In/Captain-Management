@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from sqlalchemy import join
+from sqlalchemy import String, cast, or_
 from app.models.product import Product
 from app.models.inventory import Inventory
 from typing import List, Optional
@@ -31,9 +31,13 @@ class InventoryService:
         
         # Apply filters
         if search:
+            search_term = search.strip()
             query = query.filter(
-                (Product.name.ilike(f"%{search}%")) |
-                (Product.qr_code_value.ilike(f"%{search}%"))
+                or_(
+                    Product.name.ilike(f"%{search_term}%"),
+                    Product.qr_code_value.ilike(f"%{search_term}%"),
+                    cast(Inventory.quantity, String).ilike(f"%{search_term}%"),
+                )
             )
         
         if category:

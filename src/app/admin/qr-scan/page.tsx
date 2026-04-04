@@ -64,8 +64,15 @@ export default function QRScanPage() {
         if (!scannedResult) return;
 
         const finalQuantity = Number(quantity);
-        if (!finalQuantity || finalQuantity < 1) {
+        if (!finalQuantity || finalQuantity <= 0) {
             setMessage({ type: 'error', text: "Please enter a valid quantity" });
+            return;
+        }
+
+        if (scannedProduct?.unit_type === "piece" && !Number.isInteger(finalQuantity)) {
+            const popupMessage = `You entered floating number for piece unit type product ${scannedProduct.name}.`;
+            setMessage({ type: 'error', text: popupMessage });
+            window.alert(popupMessage);
             return;
         }
 
@@ -81,8 +88,9 @@ export default function QRScanPage() {
                 setMessage({ type: 'success', text: `Successfully stocked out ${finalQuantity} items.` });
             }
             setTimeout(handleReset, 2000);
-        } catch (err: any) {
-            setMessage({ type: 'error', text: err.message || "Operation failed" });
+        } catch (err: unknown) {
+            const errorMessage = err instanceof Error ? err.message : "Operation failed";
+            setMessage({ type: 'error', text: errorMessage });
         } finally {
             setLoading(false);
         }
@@ -187,7 +195,7 @@ export default function QRScanPage() {
                                                         <Label htmlFor="remarks" className="text-left block mb-2">Remarks (Optional)</Label>
                                                         <textarea
                                                             id="remarks"
-                                                            className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                                            className="flex min-h-20 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                                             placeholder="Optional notes or comments (max 500 characters)"
                                                             value={remarks}
                                                             onChange={(e) => setRemarks(e.target.value.slice(0, 500))}

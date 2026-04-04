@@ -1,7 +1,7 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 from fastapi import HTTPException
-from app.models.product import Product
+from app.models.product import Product, UnitType
 from app.models.inventory import Inventory
 from app.models.stock_log import StockLog, StockAction
 from typing import Optional
@@ -11,6 +11,14 @@ from app.utils.precision import normalize_positive_quantity, normalize_quantity
 
 class StockService:
     """Service for transaction-safe stock operations"""
+
+    @staticmethod
+    def _validate_piece_quantity(product: Product, quantity: float) -> None:
+        if product.unit_type == UnitType.piece and not float(quantity).is_integer():
+            raise HTTPException(
+                status_code=400,
+                detail=f"You entered floating number for piece unit type product {product.name}.",
+            )
     
     @staticmethod
     def stock_in(
@@ -63,6 +71,8 @@ class StockService:
                     status_code=400,
                     detail="Quantity must be greater than 0"
                 )
+
+            StockService._validate_piece_quantity(product, quantity)
             
             # Calculate new quantity
             new_qty = normalize_quantity(current_qty + quantity)
@@ -189,6 +199,8 @@ class StockService:
                     status_code=400,
                     detail="Quantity must be greater than 0"
                 )
+
+            StockService._validate_piece_quantity(product, quantity)
             
             # Calculate new quantity
             new_qty = normalize_quantity(current_qty - quantity)

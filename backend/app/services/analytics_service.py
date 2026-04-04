@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
-from sqlalchemy import func,  case
+from sqlalchemy import func, case
 from datetime import date, datetime
+from calendar import monthrange
 from app.models.stock_log import StockLog, StockAction
 from app.models.product import Product
 from app.models.inventory import Inventory
@@ -10,6 +11,13 @@ from app.utils.precision import normalize_quantity
 
 class AnalyticsService:
     """Service for analytics and KPI calculations"""
+
+    @staticmethod
+    def get_month_bounds(target_date: Optional[date] = None) -> tuple[date, date]:
+        reference_date = target_date or datetime.utcnow().date()
+        start = reference_date.replace(day=1)
+        end = reference_date.replace(day=monthrange(reference_date.year, reference_date.month)[1])
+        return start, end
     
     @staticmethod
     def get_daily_stock_in(
@@ -194,6 +202,119 @@ class AnalyticsService:
             "stock_in": stock_in_value,
             "stock_out": stock_out_value,
             "net_change": net_change,
+        }
+
+    @staticmethod
+    def get_product_monthly_summary(
+        db: Session,
+        product_id: int,
+        target_date: Optional[date] = None,
+    ) -> dict:
+        """Get stock in/out/net for a product for the current calendar month."""
+        month_start, month_end = AnalyticsService.get_month_bounds(target_date)
+
+        stock_in = db.query(func.coalesce(func.sum(StockLog.quantity), 0)).filter(
+            StockLog.product_id == product_id,
+            StockLog.action == StockAction.IN,
+            func.date(StockLog.timestamp) >= month_start,
+            func.date(StockLog.timestamp) <= month_end,
+        ).scalar() or 0
+
+        stock_out = db.query(func.coalesce(func.sum(StockLog.quantity), 0)).filter(
+            StockLog.product_id == product_id,
+            StockLog.action == StockAction.OUT,
+            func.date(StockLog.timestamp) >= month_start,
+            func.date(StockLog.timestamp) <= month_end,
+        ).scalar() or 0
+
+        stock_in_value = normalize_quantity(stock_in)
+        stock_out_value = normalize_quantity(stock_out)
+        net_change = normalize_quantity(stock_in_value - stock_out_value)
+
+        return {
+            "product_id": product_id,
+            "period_start": month_start,
+            "period_end": month_end,
+            "stock_in": stock_in_value,
+            "stock_out": stock_out_value,
+            "net_change": net_change,
+        }
+
+    @staticmethod
+    def get_low_stock_monthly_summary(
+        db: Session,
+        low_stock_threshold: int = 5,
+        target_date: Optional[date] = None,
+    ) -> dict:
+        """Get current quantity and current-month movement for all low-stock products."""
+        month_start, month_end = AnalyticsService.get_month_bounds(target_date)
+
+        low_stock_rows = db.query(
+            Inventory.product_id,
+            Product.name.label("product_name"),
+            Product.category,
+            Product.unit_label,
+            Inventory.quantity,
+        ).join(
+            Product,
+            Inventory.product_id == Product.id,
+        ).filter(
+            Inventory.quantity < low_stock_threshold,
+        ).order_by(
+            Inventory.quantity.asc(),
+        ).all()
+
+        product_ids = [row.product_id for row in low_stock_rows]
+        monthly_by_product: dict[int, dict[str, float]] = {}
+
+        if product_ids:
+            monthly_rows = db.query(
+                StockLog.product_id,
+                func.sum(
+                    case((StockLog.action == StockAction.IN, StockLog.quantity), else_=0)
+                ).label("stock_in"),
+                func.sum(
+                    case((StockLog.action == StockAction.OUT, StockLog.quantity), else_=0)
+                ).label("stock_out"),
+            ).filter(
+                StockLog.product_id.in_(product_ids),
+                func.date(StockLog.timestamp) >= month_start,
+                func.date(StockLog.timestamp) <= month_end,
+            ).group_by(
+                StockLog.product_id,
+            ).all()
+
+            monthly_by_product = {
+                row.product_id: {
+                    "stock_in": normalize_quantity(row.stock_in or 0),
+                    "stock_out": normalize_quantity(row.stock_out or 0),
+                }
+                for row in monthly_rows
+            }
+
+        items = []
+        for row in low_stock_rows:
+            movement = monthly_by_product.get(row.product_id, {"stock_in": 0.0, "stock_out": 0.0})
+            net_change = normalize_quantity(movement["stock_in"] - movement["stock_out"])
+            unit_label = row.unit_label.value if hasattr(row.unit_label, "value") else str(row.unit_label)
+
+            items.append(
+                {
+                    "product_id": row.product_id,
+                    "product_name": row.product_name,
+                    "category": row.category,
+                    "unit_label": unit_label,
+                    "quantity": normalize_quantity(row.quantity or 0),
+                    "stock_in": movement["stock_in"],
+                    "stock_out": movement["stock_out"],
+                    "net_change": net_change,
+                }
+            )
+
+        return {
+            "period_start": month_start,
+            "period_end": month_end,
+            "items": items,
         }
 
     @staticmethod
