@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from datetime import date
+from datetime import date, datetime, timezone
 import pandas as pd
 from io import BytesIO, StringIO
 from typing import Optional
@@ -13,6 +13,17 @@ from app.utils.precision import normalize_quantity
 
 class CSVService:
     """Service for CSV export generation"""
+
+    @staticmethod
+    def _normalize_excel_timestamp(value: object) -> object:
+        if not isinstance(value, datetime):
+            return value
+
+        timestamp = value
+        if timestamp.tzinfo is not None:
+            timestamp = timestamp.astimezone(timezone.utc).replace(tzinfo=None)
+
+        return timestamp
 
     @staticmethod
     def _build_logs_dataframe(
@@ -99,7 +110,10 @@ class CSVService:
         end_date: Optional[date] = None,
     ) -> bytes:
         """Export stock logs as an Excel workbook (XLSX)."""
-        df = CSVService._build_logs_dataframe(db, start_date, end_date)
+        df = CSVService._build_logs_dataframe(db, start_date, end_date).copy()
+        if "timestamp" in df.columns:
+            df["timestamp"] = df["timestamp"].map(CSVService._normalize_excel_timestamp)
+
         buffer = BytesIO()
 
         with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
