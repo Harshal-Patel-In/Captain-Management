@@ -18,6 +18,7 @@ import { AlertTriangle, ArrowRight, Check, ChevronLeft, ChevronRight, Minus, Plu
 
 type FlowStep = "select" | "execute";
 const ALL_CATEGORY_VALUE = "__all__";
+const CATALOG_PAGE_SIZE = 1000;
 
 interface CategoryOption {
     value: string;
@@ -123,16 +124,55 @@ export default function ProductionPage() {
         setCatalogLoading(true);
 
         try {
-            const [productResponse, inventoryResponse] = await Promise.all([
-                api.getProducts(),
-                api.getInventory(),
+            const loadAllProducts = async (): Promise<Product[]> => {
+                let skip = 0;
+                const allProducts: Product[] = [];
+
+                while (true) {
+                    const response = await api.getProducts(undefined, undefined, skip, CATALOG_PAGE_SIZE);
+                    const pageProducts = response.products || [];
+                    allProducts.push(...pageProducts);
+
+                    const totalProducts = response.total ?? allProducts.length;
+                    if (pageProducts.length === 0 || allProducts.length >= totalProducts) {
+                        break;
+                    }
+
+                    skip += pageProducts.length;
+                }
+
+                return allProducts;
+            };
+
+            const loadAllInventory = async (): Promise<InventoryItem[]> => {
+                let skip = 0;
+                const allInventoryItems: InventoryItem[] = [];
+
+                while (true) {
+                    const response = await api.getInventory(undefined, undefined, skip, CATALOG_PAGE_SIZE);
+                    const pageItems = response.items || [];
+                    allInventoryItems.push(...pageItems);
+
+                    const totalItems = response.total ?? allInventoryItems.length;
+                    if (pageItems.length === 0 || allInventoryItems.length >= totalItems) {
+                        break;
+                    }
+
+                    skip += pageItems.length;
+                }
+
+                return allInventoryItems;
+            };
+
+            const [loadedProducts, loadedInventoryItems] = await Promise.all([
+                loadAllProducts(),
+                loadAllInventory(),
             ]);
 
-            const loadedProducts = productResponse.products || [];
             setProducts(loadedProducts);
 
             const inventoryMap: Record<number, number> = {};
-            (inventoryResponse.items || []).forEach((item: InventoryItem) => {
+            loadedInventoryItems.forEach((item) => {
                 inventoryMap[item.product_id] = item.quantity;
             });
             setInventoryByProductId(inventoryMap);

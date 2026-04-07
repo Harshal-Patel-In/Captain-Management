@@ -112,12 +112,25 @@ class CSVService:
         """Export stock logs as an Excel workbook (XLSX)."""
         df = CSVService._build_logs_dataframe(db, start_date, end_date).copy()
         if "timestamp" in df.columns:
-            df["timestamp"] = df["timestamp"].map(CSVService._normalize_excel_timestamp)
+            df["timestamp"] = df["timestamp"].map(CSVService._normalize_excel_timestamp).map(
+                lambda value: value.strftime("%d-%m-%Y %H:%M:%S") if isinstance(value, datetime) else ""
+            )
 
         buffer = BytesIO()
 
         with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
             df.to_excel(writer, index=False, sheet_name="stock_logs")
+
+            worksheet = writer.sheets["stock_logs"]
+            for column_cells in worksheet.columns:
+                max_length = 0
+                for cell in column_cells:
+                    cell_text = "" if cell.value is None else str(cell.value)
+                    if len(cell_text) > max_length:
+                        max_length = len(cell_text)
+
+                column_letter = column_cells[0].column_letter
+                worksheet.column_dimensions[column_letter].width = min(max(max_length + 2, 10), 60)
 
         buffer.seek(0)
         return buffer.read()

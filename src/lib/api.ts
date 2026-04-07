@@ -124,10 +124,12 @@ class APIClient {
     }
 
     // Products
-    async getProducts(search?: string, category?: string): Promise<ProductsResponse> {
+    async getProducts(search?: string, category?: string, skip: number = 0, limit: number = 100): Promise<ProductsResponse> {
         const params = new URLSearchParams();
         if (search) params.append("search", search);
         if (category) params.append("category", category);
+        params.append("skip", skip.toString());
+        params.append("limit", limit.toString());
 
         return this.request<ProductsResponse>(`/products?${params}`);
     }
@@ -189,10 +191,12 @@ class APIClient {
     }
 
     // Inventory
-    async getInventory(search?: string, category?: string): Promise<InventoryResponse> {
+    async getInventory(search?: string, category?: string, skip: number = 0, limit: number = 100): Promise<InventoryResponse> {
         const params = new URLSearchParams();
         if (search) params.append("search", search);
         if (category) params.append("category", category);
+        params.append("skip", skip.toString());
+        params.append("limit", limit.toString());
 
         return this.request<InventoryResponse>(`/inventory?${params}`);
     }
