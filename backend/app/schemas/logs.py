@@ -30,3 +30,22 @@ class DateRangeFilter(BaseModel):
     """Schema for date range filtering"""
     start_date: Optional[date] = None
     end_date: Optional[date] = None
+
+
+class LogsRetentionStatusResponse(BaseModel):
+    """Retention and warning status for previous-month stock logs."""
+
+    period_start: date
+    period_end: date
+    export_deadline: date
+    delete_after: date
+    days_until_export_deadline: int
+    days_until_delete: int
+    has_logs_in_main_db: bool
+    has_been_exported: bool
+    exported_at: Optional[datetime] = None
+    is_last_export_day: bool
+    is_delete_window: bool
+    is_deletion_due: bool
+    warning_message: Optional[str] = None
+    suggested_filename: str

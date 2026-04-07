@@ -57,3 +57,6 @@ next-env.d.ts
 
 # Clerk configuration (can include secrets)
 /.clerk/
+
+# runtime archives
+/backend/data/log_archives/

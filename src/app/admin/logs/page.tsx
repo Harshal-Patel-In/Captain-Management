@@ -8,27 +8,54 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api } from "@/lib/api";
 import { useRealtime } from "@/context/realtime";
-import { StockLog } from "@/lib/types";
-import { Download, ArrowUp, ArrowDown, Zap } from "lucide-react";
+import { LogsRetentionStatus, StockLog } from "@/lib/types";
+import { Download, ArrowUp, ArrowDown, AlertTriangle, Zap } from "lucide-react";
+
+const toDateInputValue = (value: Date) => value.toISOString().slice(0, 10);
+
+const getCurrentMonthRange = () => {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    return {
+        startDate: toDateInputValue(start),
+        endDate: toDateInputValue(now),
+    };
+};
+
+const getPreviousMonthRange = () => {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const end = new Date(now.getFullYear(), now.getMonth(), 0);
+    return {
+        startDate: toDateInputValue(start),
+        endDate: toDateInputValue(end),
+    };
+};
 
 export default function LogsPage() {
     const { on, off, isConnected } = useRealtime();
+    const initialRange = getCurrentMonthRange();
     const [logs, setLogs] = useState<StockLog[]>([]);
     const [loading, setLoading] = useState(true);
-    const [startDate, setStartDate] = useState("");
-    const [endDate, setEndDate] = useState("");
+    const [startDate, setStartDate] = useState(initialRange.startDate);
+    const [endDate, setEndDate] = useState(initialRange.endDate);
+    const [retentionStatus, setRetentionStatus] = useState<LogsRetentionStatus | null>(null);
+    const [lastDayDialogOpen, setLastDayDialogOpen] = useState(false);
 
     useEffect(() => {
         loadLogs();
+        loadRetentionStatus();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     useEffect(() => {
         const refreshLogs = async () => {
             await loadLogs();
+            await loadRetentionStatus();
         };
 
         on("log_created", refreshLogs);
@@ -43,12 +70,24 @@ export default function LogsPage() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [on, off, startDate, endDate]);
 
-    const loadLogs = async () => {
+    const loadRetentionStatus = async () => {
+        try {
+            const status = await api.getLogsRetentionStatus();
+            setRetentionStatus(status);
+            if (status.is_last_export_day && status.has_logs_in_main_db) {
+                setLastDayDialogOpen(true);
+            }
+        } catch (err) {
+            console.error("Failed to load logs retention status:", err);
+        }
+    };
+
+    const loadLogsForRange = async (rangeStart?: string, rangeEnd?: string) => {
         setLoading(true);
         try {
             const data = await api.getLogs({
-                start_date: startDate || undefined,
-                end_date: endDate || undefined,
+                start_date: rangeStart || undefined,
+                end_date: rangeEnd || undefined,
             });
             setLogs(data.logs || []);
         } catch (err) {
@@ -58,8 +97,31 @@ export default function LogsPage() {
         }
     };
 
+    const loadLogs = async () => {
+        await loadLogsForRange(startDate, endDate);
+    };
+
     const handleExport = () => {
-        window.open(api.getLogsCSVUrl(startDate, endDate), "_blank");
+        window.open(api.getLogsExcelUrl(startDate, endDate), "_blank");
+    };
+
+    const handleExportPreviousMonth = () => {
+        if (!retentionStatus) return;
+        window.open(api.getLogsExcelUrl(retentionStatus.period_start, retentionStatus.period_end), "_blank");
+    };
+
+    const handleUseCurrentMonth = async () => {
+        const range = getCurrentMonthRange();
+        setStartDate(range.startDate);
+        setEndDate(range.endDate);
+        await loadLogsForRange(range.startDate, range.endDate);
+    };
+
+    const handleUseLastMonth = async () => {
+        const range = getPreviousMonthRange();
+        setStartDate(range.startDate);
+        setEndDate(range.endDate);
+        await loadLogsForRange(range.startDate, range.endDate);
     };
 
     return (
@@ -79,16 +141,37 @@ export default function LogsPage() {
                             </div>
                             <Button onClick={handleExport} variant="outline" className="gap-2">
                                 <Download className="h-4 w-4" />
-                                Export CSV
+                                Export Excel
                             </Button>
                         </div>
+
+                        {retentionStatus?.warning_message && retentionStatus.has_logs_in_main_db && (
+                            <Card className="mb-6 border-amber-300 bg-amber-50">
+                                <CardContent className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between">
+                                    <div className="flex items-start gap-2">
+                                        <AlertTriangle className="mt-0.5 h-4 w-4 text-amber-700" />
+                                        <div>
+                                            <p className="text-sm font-semibold text-amber-900">Previous month logs retention</p>
+                                            <p className="text-sm text-amber-800">{retentionStatus.warning_message}</p>
+                                            <p className="text-xs text-amber-700">
+                                                Period: {retentionStatus.period_start} to {retentionStatus.period_end}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <Button onClick={handleExportPreviousMonth} className="gap-2 bg-amber-700 text-white hover:bg-amber-800">
+                                        <Download className="h-4 w-4" />
+                                        Export Previous Month
+                                    </Button>
+                                </CardContent>
+                            </Card>
+                        )}
 
                         <Card className="mb-6">
                             <CardHeader>
                                 <CardTitle>Filters</CardTitle>
                             </CardHeader>
                             <CardContent>
-                                <div className="grid gap-4 md:grid-cols-3">
+                                <div className="grid gap-4 md:grid-cols-4">
                                     <div>
                                         <Label htmlFor="start">Start Date</Label>
                                         <Input
@@ -110,6 +193,12 @@ export default function LogsPage() {
                                     <div className="flex items-end">
                                         <Button onClick={loadLogs} className="w-full">Apply Filters</Button>
                                     </div>
+                                    <div className="flex items-end">
+                                        <div className="w-full space-y-2">
+                                            <Button variant="outline" onClick={handleUseCurrentMonth} className="w-full">Current Month</Button>
+                                            <Button variant="outline" onClick={handleUseLastMonth} className="w-full">Last Month</Button>
+                                        </div>
+                                    </div>
                                 </div>
                             </CardContent>
                         </Card>
@@ -128,7 +217,7 @@ export default function LogsPage() {
                                         {/* Mobile: Card layout */}
                                         <div className="space-y-3 md:hidden">
                                             {logs.map((log) => (
-                                                <div key={log.id} className="rounded-xl border bg-card p-4 space-y-2">
+                                                <div key={log.id} className="rounded-xl border border-[#0b1d15]/14 bg-white/95 p-4 shadow-[0_12px_28px_-20px_rgba(11,29,21,0.45)] space-y-2">
                                                     <div className="flex items-center justify-between">
                                                         <div className="flex items-center gap-2">
                                                             {log.action.toLowerCase() === "in" ? (
@@ -205,6 +294,24 @@ export default function LogsPage() {
                                 )}
                             </CardContent>
                         </Card>
+
+                        <Dialog open={lastDayDialogOpen} onOpenChange={setLastDayDialogOpen}>
+                            <DialogContent className="sm:max-w-lg">
+                                <DialogHeader>
+                                    <DialogTitle>Last Day To Export Logs</DialogTitle>
+                                    <DialogDescription>
+                                        This is the final day to export {retentionStatus?.period_start} to {retentionStatus?.period_end} stock logs.
+                                        Please export now before archival and deletion workflow begins.
+                                    </DialogDescription>
+                                </DialogHeader>
+                                <div className="flex justify-end">
+                                    <Button onClick={handleExportPreviousMonth} className="gap-2">
+                                        <Download className="h-4 w-4" />
+                                        Export Excel
+                                    </Button>
+                                </div>
+                            </DialogContent>
+                        </Dialog>
                     </PageTransition>
                 </main>
             </div>

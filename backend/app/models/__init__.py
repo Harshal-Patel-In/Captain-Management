@@ -1,6 +1,7 @@
 from .product import Product
 from .inventory import Inventory
 from .stock_log import StockLog, StockAction
+from .stock_log_archive import StockLogArchive
 from .recipe import Recipe
 
 # E-commerce models

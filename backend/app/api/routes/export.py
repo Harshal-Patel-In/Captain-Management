@@ -5,6 +5,7 @@ from datetime import date
 from typing import Optional
 from app.api.deps import get_db
 from app.services.csv_service import CSVService
+from app.services.log_retention_service import LogRetentionService
 
 router = APIRouter()
 
@@ -42,6 +43,31 @@ async def export_logs(
     return Response(
         content=csv_content,
         media_type="text/csv",
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}"
+        }
+    )
+
+
+@router.get("/logs-excel")
+async def export_logs_excel(
+    start_date: Optional[date] = Query(None, description="Start date (YYYY-MM-DD)"),
+    end_date: Optional[date] = Query(None, description="End date (YYYY-MM-DD)"),
+    db: Session = Depends(get_db)
+):
+    """Export stock logs as Excel (XLSX) with optional date filtering."""
+    excel_content = CSVService.export_logs_excel(db, start_date, end_date)
+
+    if start_date and end_date:
+        LogRetentionService.mark_period_exported(db, start_date, end_date)
+
+    filename = "stock_logs.xlsx"
+    if start_date and end_date:
+        filename = f"{start_date}_{end_date}stock_logs.xlsx"
+
+    return Response(
+        content=excel_content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={
             "Content-Disposition": f"attachment; filename={filename}"
         }

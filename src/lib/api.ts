@@ -1,5 +1,5 @@
 // API client for backend communication
-import { ProductsResponse, InventoryResponse, LogsResponse, StockTrendsResponse, Product, RecipeResponse, UserListItem, UserDetail, UserStats, ConversationListItem, ChatMessage, AvailableUser, ProductDailySummary, ProductMonthlySummary, LowStockMonthlySummaryResponse } from "./types";
+import { ProductsResponse, InventoryResponse, LogsResponse, LogsRetentionStatus, StockTrendsResponse, Product, RecipeResponse, UserListItem, UserDetail, UserStats, ConversationListItem, ChatMessage, AvailableUser, ProductDailySummary, ProductMonthlySummary, LowStockMonthlySummaryResponse } from "./types";
 
 // Dynamic API base URL that works for both localhost and network access
 const getApiBase = () => {
@@ -213,6 +213,10 @@ class APIClient {
         return this.request<LogsResponse>(`/logs?${params}`);
     }
 
+    async getLogsRetentionStatus(): Promise<LogsRetentionStatus> {
+        return this.request<LogsRetentionStatus>("/logs/retention/status");
+    }
+
     // Analytics
     async getStockTrends(filters?: {
         start_date?: string;
@@ -282,6 +286,13 @@ class APIClient {
         return `${getApiBase()}/export/logs?${params}`;
     }
 
+    getLogsExcelUrl(start_date?: string, end_date?: string) {
+        const params = new URLSearchParams();
+        if (start_date) params.append("start_date", start_date);
+        if (end_date) params.append("end_date", end_date);
+        return `${getApiBase()}/export/logs-excel?${params}`;
+    }
+
     getAnalyticsCSVUrl(start_date?: string, end_date?: string, threshold?: number) {
         const params = new URLSearchParams();
         if (start_date) params.append("start_date", start_date);
@@ -293,7 +304,7 @@ class APIClient {
         return this.request<RecipeResponse>(`/production/recipes/${productId}`);
     }
 
-    async executeProduction(data: { product_id: number; quantity: number; custom_recipe?: any[] }): Promise<any> {
+    async executeProduction(data: { product_id: number; quantity: number; custom_recipe?: any[]; persist_custom_recipe?: boolean }): Promise<any> {
         return this.request<any>('/production/production/execute', {
             method: 'POST',
             body: JSON.stringify(data)

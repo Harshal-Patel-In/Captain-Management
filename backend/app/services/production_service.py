@@ -49,12 +49,12 @@ class ProductionService:
         recipe_items = []
         
         if request.custom_recipe:
-            # If custom recipe provided, update the stored recipe (Last Used logic)
-            ProductionService.update_recipe(db, request.product_id, request.custom_recipe)
-            # Re-fetch to get ORM objects if needed, or just use input
-            # Ideally, use the objects we just created or formatted input map
-            # Let's verify standard recipe now exists
-            recipe_items = db.query(Recipe).filter(Recipe.product_id == request.product_id).all()
+            # Backward-compatible behavior keeps persisting unless client opts out.
+            if request.persist_custom_recipe:
+                ProductionService.update_recipe(db, request.product_id, request.custom_recipe)
+                recipe_items = db.query(Recipe).filter(Recipe.product_id == request.product_id).all()
+            else:
+                recipe_items = request.custom_recipe
         else:
             recipe_items = db.query(Recipe).filter(Recipe.product_id == request.product_id).all()
             if not recipe_items:

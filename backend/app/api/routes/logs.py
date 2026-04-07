@@ -1,15 +1,53 @@
 from fastapi import APIRouter, Depends, Query
+import logging
 from sqlalchemy.orm import Session
 from datetime import date
 from typing import Optional
 from app.api.deps import get_db
 from app.models.stock_log import StockLog, StockAction
 from app.models.product import Product
-from app.schemas.logs import StockLogList
+from app.schemas.logs import LogsRetentionStatusResponse, StockLogList
 from sqlalchemy import func
+from app.services.log_retention_service import LogRetentionService
 from app.utils.precision import normalize_quantity
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+
+@router.get("/retention/status", response_model=LogsRetentionStatusResponse)
+async def get_logs_retention_status(db: Session = Depends(get_db)):
+    """Get previous-month retention status and run overdue archival cleanup."""
+    try:
+        LogRetentionService.run_maintenance(db)
+    except Exception as exc:
+        logger.exception("Retention maintenance failed", exc_info=exc)
+
+    try:
+        return LogRetentionService.get_previous_month_status(db)
+    except Exception as exc:
+        logger.exception("Failed to build retention status", exc_info=exc)
+
+        period_start, period_end = LogRetentionService.get_previous_month_bounds(date.today())
+        export_deadline = LogRetentionService.get_export_deadline(period_end)
+        delete_after = LogRetentionService.get_delete_after(export_deadline)
+
+        return {
+            "period_start": period_start,
+            "period_end": period_end,
+            "export_deadline": export_deadline,
+            "delete_after": delete_after,
+            "days_until_export_deadline": (export_deadline - date.today()).days,
+            "days_until_delete": (delete_after - date.today()).days,
+            "has_logs_in_main_db": False,
+            "has_been_exported": False,
+            "exported_at": None,
+            "is_last_export_day": False,
+            "is_delete_window": False,
+            "is_deletion_due": False,
+            "warning_message": None,
+            "suggested_filename": f"{period_start}_{period_end}stock_logs.xlsx",
+        }
 
 
 @router.get("", response_model=StockLogList)

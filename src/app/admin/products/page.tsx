@@ -481,7 +481,7 @@ export default function ProductsPage() {
                                         {/* Mobile: Card layout */}
                                         <div className="space-y-3 md:hidden">
                                             {products.map((product) => (
-                                                <div key={product.id} className="rounded-xl border bg-card p-4 space-y-2">
+                                                <div key={product.id} className="rounded-xl border border-[#0b1d15]/14 bg-white/95 p-4 shadow-[0_12px_28px_-20px_rgba(11,29,21,0.45)] space-y-2">
                                                     <div className="flex items-start justify-between">
                                                         <div>
                                                             <div className="font-medium text-[#0b1d15]">{product.name}</div>

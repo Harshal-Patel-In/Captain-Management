@@ -1,4 +1,5 @@
 import logging
+import asyncio
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -6,9 +7,26 @@ from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 from app.config import settings
 from app.database import SessionLocal
+from app.services.log_retention_service import LogRetentionService
 
 
 logger = logging.getLogger(__name__)
+
+RETENTION_MAINTENANCE_INTERVAL_SECONDS = 60 * 60 * 24
+
+
+async def retention_maintenance_loop() -> None:
+    """Run retention archival/deletion checks once a day."""
+    while True:
+        db = SessionLocal()
+        try:
+            LogRetentionService.run_maintenance(db)
+        except Exception as exc:
+            logger.exception("Retention maintenance failed", exc_info=exc)
+        finally:
+            db.close()
+
+        await asyncio.sleep(RETENTION_MAINTENANCE_INTERVAL_SECONDS)
 
 
 def parse_cors_origins(frontend_url: str) -> list[str]:
@@ -31,6 +49,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+async def start_background_retention_maintenance() -> None:
+    asyncio.create_task(retention_maintenance_loop())
 
 
 @app.get("/")

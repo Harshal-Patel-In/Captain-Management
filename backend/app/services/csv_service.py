@@ -1,7 +1,7 @@
 from sqlalchemy.orm import Session
 from datetime import date
 import pandas as pd
-from io import StringIO
+from io import BytesIO, StringIO
 from typing import Optional
 from app.services.inventory_service import InventoryService
 from app.services.analytics_service import AnalyticsService
@@ -13,6 +13,63 @@ from app.utils.precision import normalize_quantity
 
 class CSVService:
     """Service for CSV export generation"""
+
+    @staticmethod
+    def _build_logs_dataframe(
+        db: Session,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+    ) -> pd.DataFrame:
+        query = db.query(
+            StockLog.id,
+            StockLog.product_id,
+            Product.name.label('product_name'),
+            StockLog.action,
+            StockLog.quantity,
+            StockLog.previous_quantity,
+            StockLog.new_quantity,
+            StockLog.timestamp,
+            StockLog.remarks
+        ).join(Product, StockLog.product_id == Product.id)
+
+        if start_date:
+            query = query.filter(func.date(StockLog.timestamp) >= start_date)
+        if end_date:
+            query = query.filter(func.date(StockLog.timestamp) <= end_date)
+
+        results = query.order_by(StockLog.timestamp.desc()).all()
+
+        if not results:
+            return pd.DataFrame(
+                columns=[
+                    "id",
+                    "product_id",
+                    "product_name",
+                    "action",
+                    "quantity",
+                    "previous_quantity",
+                    "new_quantity",
+                    "timestamp",
+                    "remarks",
+                ]
+            )
+
+        data = [
+            {
+                "id": row.id,
+                "product_id": row.product_id,
+                "product_name": row.product_name,
+                "action": row.action.value,
+                "quantity": normalize_quantity(row.quantity),
+                "previous_quantity": normalize_quantity(row.previous_quantity),
+                "new_quantity": normalize_quantity(row.new_quantity),
+                "timestamp": row.timestamp,
+                "remarks": row.remarks or ""
+            }
+            for row in results
+        ]
+
+        return pd.DataFrame(data)
     
     @staticmethod
     def export_inventory(db: Session) -> str:
@@ -32,47 +89,24 @@ class CSVService:
         end_date: Optional[date] = None
     ) -> str:
         """Export stock logs with optional date filtering"""
-        query = db.query(
-            StockLog.id,
-            StockLog.product_id,
-            Product.name.label('product_name'),
-            StockLog.action,
-            StockLog.quantity,
-            StockLog.previous_quantity,
-            StockLog.new_quantity,
-            StockLog.timestamp,
-            StockLog.remarks
-        ).join(Product, StockLog.product_id == Product.id)
-        
-        # Apply date filters
-        if start_date:
-            query = query.filter(func.date(StockLog.timestamp) >= start_date)
-        if end_date:
-            query = query.filter(func.date(StockLog.timestamp) <= end_date)
-        
-        query = query.order_by(StockLog.timestamp.desc())
-        results = query.all()
-        
-        if not results:
-            return "id,product_id,product_name,action,quantity,previous_quantity,new_quantity,timestamp,remarks\n"
-        
-        data = [
-            {
-                "id": row.id,
-                "product_id": row.product_id,
-                "product_name": row.product_name,
-                "action": row.action.value,
-                "quantity": normalize_quantity(row.quantity),
-                "previous_quantity": normalize_quantity(row.previous_quantity),
-                "new_quantity": normalize_quantity(row.new_quantity),
-                "timestamp": row.timestamp,
-                "remarks": row.remarks or ""
-            }
-            for row in results
-        ]
-        
-        df = pd.DataFrame(data)
+        df = CSVService._build_logs_dataframe(db, start_date, end_date)
         return df.to_csv(index=False)
+
+    @staticmethod
+    def export_logs_excel(
+        db: Session,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+    ) -> bytes:
+        """Export stock logs as an Excel workbook (XLSX)."""
+        df = CSVService._build_logs_dataframe(db, start_date, end_date)
+        buffer = BytesIO()
+
+        with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+            df.to_excel(writer, index=False, sheet_name="stock_logs")
+
+        buffer.seek(0)
+        return buffer.read()
     
     @staticmethod
     def export_analytics(

@@ -24,6 +24,7 @@ from app.config import settings
 from app.models.product import Product
 from app.models.inventory import Inventory
 from app.models.stock_log import StockLog
+from app.models.stock_log_archive import StockLogArchive
 
 # Set target_metadata for autogenerate
 target_metadata = Base.metadata

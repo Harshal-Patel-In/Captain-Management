@@ -14,10 +14,10 @@ import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, Di
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api } from "@/lib/api";
 import { useRealtime } from "@/context/realtime";
-import { InventoryItem, ProductMonthlySummary } from "@/lib/types";
+import { InventoryItem, LogsRetentionStatus, ProductMonthlySummary } from "@/lib/types";
 import { RealtimeEvent } from "@/lib/realtime";
 import { formatQuantity } from "@/lib/utils";
-import { ArrowDownCircle, ArrowUpCircle, ArrowUpDown, Download, Loader2, X, Zap } from "lucide-react";
+import { AlertTriangle, ArrowDownCircle, ArrowUpCircle, ArrowUpDown, Download, Loader2, X, Zap } from "lucide-react";
 
 const TOOLTIP_AUTO_HIDE_MS = 6000;
 
@@ -42,6 +42,8 @@ export default function InventoryPage() {
     const [monthlySummaryLoadingByProduct, setMonthlySummaryLoadingByProduct] = useState<Record<number, boolean>>({});
     const [tooltipPosition, setTooltipPosition] = useState<{ top: number; left: number } | null>(null);
     const [isTooltipHovered, setIsTooltipHovered] = useState(false);
+    const [retentionStatus, setRetentionStatus] = useState<LogsRetentionStatus | null>(null);
+    const [lastDayExportDialogOpen, setLastDayExportDialogOpen] = useState(false);
     const hasLoadedRef = useRef(false);
 
     const loadInventory = useCallback(async (searchTerm?: string, categoryFilter?: string) => {
@@ -86,6 +88,22 @@ export default function InventoryPage() {
         void loadCategories();
     }, []);
 
+    const loadRetentionStatus = useCallback(async () => {
+        try {
+            const status = await api.getLogsRetentionStatus();
+            setRetentionStatus(status);
+            if (status.is_last_export_day && status.has_logs_in_main_db) {
+                setLastDayExportDialogOpen(true);
+            }
+        } catch (err) {
+            console.error("Failed to load logs retention status:", err);
+        }
+    }, []);
+
+    useEffect(() => {
+        void loadRetentionStatus();
+    }, [loadRetentionStatus]);
+
     useEffect(() => {
         const activeCategory = category === "all" ? undefined : category;
         const debounceTimer = window.setTimeout(() => {
@@ -119,6 +137,11 @@ export default function InventoryPage() {
 
     const handleExport = () => {
         window.open(api.getInventoryCSVUrl(), "_blank");
+    };
+
+    const handleExportPreviousMonthLogs = () => {
+        if (!retentionStatus) return;
+        window.open(api.getLogsExcelUrl(retentionStatus.period_start, retentionStatus.period_end), "_blank");
     };
 
     const handleOpenStockDialog = (item: InventoryItem, operation: "in" | "out" = "in") => {
@@ -171,7 +194,8 @@ export default function InventoryPage() {
 
         setMonthlySummaryLoadingByProduct((prev) => ({ ...prev, [productId]: true }));
         try {
-            const summary = await api.getProductMonthlySummary(productId);
+            const targetDate = new Date().toISOString().slice(0, 10);
+            const summary = await api.getProductMonthlySummary(productId, targetDate);
             setMonthlySummaryByProduct((prev) => ({ ...prev, [productId]: summary }));
         } catch (err) {
             console.error("Failed to load product monthly summary:", err);
@@ -260,6 +284,27 @@ export default function InventoryPage() {
                             </Button>
                         </div>
 
+                        {retentionStatus?.warning_message && retentionStatus.has_logs_in_main_db && (
+                            <Card className="mb-6 border-amber-300 bg-amber-50">
+                                <CardContent className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between">
+                                    <div className="flex items-start gap-2">
+                                        <AlertTriangle className="mt-0.5 h-4 w-4 text-amber-700" />
+                                        <div>
+                                            <p className="text-sm font-semibold text-amber-900">Export previous month stock logs</p>
+                                            <p className="text-sm text-amber-800">{retentionStatus.warning_message}</p>
+                                            <p className="text-xs text-amber-700">
+                                                Period: {retentionStatus.period_start} to {retentionStatus.period_end}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <Button onClick={handleExportPreviousMonthLogs} className="gap-2 bg-amber-700 text-white hover:bg-amber-800">
+                                        <Download className="h-4 w-4" />
+                                        Export Excel
+                                    </Button>
+                                </CardContent>
+                            </Card>
+                        )}
+
                         <Card>
                             <CardHeader>
                                 <CardTitle>Stock Levels</CardTitle>
@@ -303,7 +348,7 @@ export default function InventoryPage() {
                                         {/* Mobile: Card layout */}
                                         <div className="space-y-3 md:hidden">
                                             {inventory.map((item) => (
-                                                <div key={item.product_id} className="rounded-xl border bg-card p-4">
+                                                <div key={item.product_id} className="rounded-xl border border-[#0b1d15]/14 bg-white/95 p-4 shadow-[0_12px_28px_-20px_rgba(11,29,21,0.45)]">
                                                     <div className="flex items-start justify-between">
                                                         <div className="relative">
                                                             <button
@@ -423,13 +468,13 @@ export default function InventoryPage() {
                                     onMouseEnter={() => setIsTooltipHovered(true)}
                                     onMouseLeave={() => setIsTooltipHovered(false)}
                                 >
-                                    <div className="mb-2 font-semibold text-[#0b1d15]">Current Month Movement</div>
+                                    <div className="mb-2 font-semibold text-[#0b1d15]">Monthly Stock Movement</div>
                                     {monthlySummaryLoadingByProduct[activeTooltipProductId] ? (
                                         <div className="text-gray-500">Loading...</div>
                                     ) : monthlySummaryByProduct[activeTooltipProductId] ? (
                                         <div className="space-y-1">
                                             <div className="text-[11px] text-gray-500 mb-1">
-                                                {new Date(monthlySummaryByProduct[activeTooltipProductId].period_start).toLocaleDateString(undefined, { month: "long", year: "numeric" })}
+                                                Period: {new Date(monthlySummaryByProduct[activeTooltipProductId].period_start).toLocaleDateString()} to {new Date(monthlySummaryByProduct[activeTooltipProductId].period_end).toLocaleDateString()}
                                             </div>
                                             <div className="flex items-center justify-between gap-4">
                                                 <span className="text-gray-600">Stock In</span>
@@ -454,6 +499,24 @@ export default function InventoryPage() {
                             </>,
                             document.body
                         )}
+
+                        <Dialog open={lastDayExportDialogOpen} onOpenChange={setLastDayExportDialogOpen}>
+                            <DialogContent className="sm:max-w-lg">
+                                <DialogHeader>
+                                    <DialogTitle>Last Day To Export Stock Logs</DialogTitle>
+                                    <DialogDescription>
+                                        This is the final day to export {retentionStatus?.period_start} to {retentionStatus?.period_end} stock logs.
+                                        Please export now before archival and deletion workflow starts.
+                                    </DialogDescription>
+                                </DialogHeader>
+                                <div className="flex justify-end">
+                                    <Button onClick={handleExportPreviousMonthLogs} className="gap-2">
+                                        <Download className="h-4 w-4" />
+                                        Export Excel
+                                    </Button>
+                                </div>
+                            </DialogContent>
+                        </Dialog>
 
                         <Dialog open={stockInDialogOpen} onOpenChange={(open) => (open ? setStockInDialogOpen(true) : handleCloseStockInDialog())}>
                             <DialogContent showCloseButton={false} className="sm:max-w-xl overflow-hidden border border-border bg-card p-0">

@@ -82,6 +82,23 @@ export interface LogsResponse {
     logs: StockLog[];
 }
 
+export interface LogsRetentionStatus {
+    period_start: string;
+    period_end: string;
+    export_deadline: string;
+    delete_after: string;
+    days_until_export_deadline: number;
+    days_until_delete: number;
+    has_logs_in_main_db: boolean;
+    has_been_exported: boolean;
+    exported_at: string | null;
+    is_last_export_day: boolean;
+    is_delete_window: boolean;
+    is_deletion_due: boolean;
+    warning_message: string | null;
+    suggested_filename: string;
+}
+
 export interface StockTrendsResponse extends StockTrends { }
 
 export interface ProductDailySummary {
@@ -139,6 +156,7 @@ export interface ProductionRequest {
         ingredient_id: number;
         quantity: number;
     }[];
+    persist_custom_recipe?: boolean;
 }
 
 // ============= User Management Types =============

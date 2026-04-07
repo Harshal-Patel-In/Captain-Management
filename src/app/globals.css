@@ -52,9 +52,9 @@
   /* #f4f1ea Cream */
   --foreground: oklch(0.129 0.042 164.695);
   /* #0b1d15 Deep Green */
-  --card: oklch(0.957 0.01 90);
+  --card: oklch(0.985 0.008 90);
   --card-foreground: oklch(0.129 0.042 164.695);
-  --popover: oklch(0.957 0.01 90);
+  --popover: oklch(0.985 0.008 90);
   --popover-foreground: oklch(0.129 0.042 164.695);
   --primary: oklch(0.129 0.042 164.695);
   /* #0b1d15 */
@@ -90,9 +90,9 @@
   /* Dark mode mappings if needed, for given design instructions we stick primarily to the specific light theme but ensuring functionality */
   --background: oklch(0.129 0.042 164.695);
   --foreground: oklch(0.957 0.01 90);
-  --card: oklch(0.129 0.042 164.695);
+  --card: oklch(0.17 0.042 164.695);
   --card-foreground: oklch(0.957 0.01 90);
-  --popover: oklch(0.129 0.042 164.695);
+  --popover: oklch(0.17 0.042 164.695);
   --popover-foreground: oklch(0.957 0.01 90);
   --primary: oklch(0.957 0.01 90);
   --primary-foreground: oklch(0.129 0.042 164.695);

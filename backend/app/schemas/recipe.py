@@ -33,6 +33,8 @@ class ProductionRequest(BaseModel):
     quantity: float = Field(..., gt=0)
     # Optional: Allow defining/overriding recipe on the fly
     custom_recipe: Optional[List[RecipeItemCreate]] = None
+    # Backward-compatible default: keep existing behavior unless client opts out.
+    persist_custom_recipe: bool = True
 
     @field_validator("quantity")
     @classmethod

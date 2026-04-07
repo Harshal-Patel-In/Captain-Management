@@ -213,7 +213,7 @@ export default function DashboardPage() {
                       : "the current calendar month"}.
                   </DialogDescription>
                 </DialogHeader>
-                <div className="space-y-3 overflow-y-auto pr-1">
+                <div className="max-h-[55vh] space-y-3 overflow-y-auto pr-1">
                   {lowStockLoading && <p className="text-sm text-gray-600">Loading...</p>}
                   {lowStockError && <p className="text-sm text-red-600">{lowStockError}</p>}
                   {!lowStockLoading && !lowStockError && lowStockSummary && (
@@ -223,7 +223,7 @@ export default function DashboardPage() {
                     <p className="text-sm text-gray-600">No low stock products found.</p>
                   )}
                   {lowStockSummary?.items.map((item) => (
-                    <div key={item.product_id} className="rounded-lg border p-3">
+                    <div key={item.product_id} className="rounded-xl border border-[#0b1d15]/14 bg-white/95 p-3 shadow-[0_12px_28px_-20px_rgba(11,29,21,0.45)]">
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <p className="font-medium text-[#0b1d15]">{item.product_name}</p>
