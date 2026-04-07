@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
 import { LowStockMonthlySummaryResponse } from "@/lib/types";
-import { formatQuantity } from "@/lib/utils";
+import { formatDateDDMMYYYY, formatQuantity } from "@/lib/utils";
 import { useRealtime } from "@/context/realtime";
 import { Package, TrendingUp, TrendingDown, AlertTriangle, Zap } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -209,7 +209,7 @@ export default function DashboardPage() {
                   <DialogTitle>All Low Stock Products</DialogTitle>
                   <DialogDescription>
                     Showing all currently low-stock products. Stock In/Out/Net values are for {lowStockSummary
-                      ? new Date(lowStockSummary.period_start).toLocaleDateString(undefined, { month: "long", year: "numeric" })
+                      ? `${formatDateDDMMYYYY(lowStockSummary.period_start)} to ${formatDateDDMMYYYY(lowStockSummary.period_end)}`
                       : "the current calendar month"}.
                   </DialogDescription>
                 </DialogHeader>

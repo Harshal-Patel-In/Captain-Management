@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { formatDateTimeDDMMYYYY } from "@/lib/utils";
 import { BanknoteArrowDown, CircleDollarSign, Landmark, WalletCards } from "lucide-react";
 
 interface Payment {
@@ -44,13 +45,7 @@ function formatCurrency(amount: number) {
 }
 
 function formatDateTime(dateString: string) {
-    return new Date(dateString).toLocaleString("en-IN", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-    });
+    return formatDateTimeDDMMYYYY(dateString);
 }
 
 export default function PaymentsPage() {

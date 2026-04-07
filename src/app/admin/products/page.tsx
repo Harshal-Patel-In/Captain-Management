@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api } from "@/lib/api";
 import { Product } from "@/lib/types";
-import { formatQuantity } from "@/lib/utils";
+import { formatDateDDMMYYYY, formatQuantity } from "@/lib/utils";
 import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 
 const UNIT_TYPE_TO_LABEL = {
@@ -513,7 +513,7 @@ export default function ProductsPage() {
                                                     <div className="text-sm text-gray-600">
                                                         Quantity: {quantityByProductId[product.id] !== undefined ? `${formatQuantity(quantityByProductId[product.id])} ${product.unit_label}` : `0 ${product.unit_label}`}
                                                     </div>
-                                                    <div className="text-xs text-gray-400">Created {new Date(product.created_at).toLocaleDateString()}</div>
+                                                    <div className="text-xs text-gray-400">Created {formatDateDDMMYYYY(product.created_at)}</div>
                                                 </div>
                                             ))}
                                         </div>
@@ -543,7 +543,7 @@ export default function ProductsPage() {
                                                     <TableCell className="text-right font-semibold">
                                                         {quantityByProductId[product.id] !== undefined ? `${formatQuantity(quantityByProductId[product.id])} ${product.unit_label}` : `0 ${product.unit_label}`}
                                                     </TableCell>
-                                                    <TableCell>{new Date(product.created_at).toLocaleDateString()}</TableCell>
+                                                    <TableCell>{formatDateDDMMYYYY(product.created_at)}</TableCell>
                                                     <TableCell className="text-right">
                                                         <div className="inline-flex items-center gap-1">
                                                             <Button

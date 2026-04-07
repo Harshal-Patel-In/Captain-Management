@@ -13,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { api } from "@/lib/api";
 import { useRealtime } from "@/context/realtime";
 import { LogsRetentionStatus, StockLog } from "@/lib/types";
+import { formatDateDDMMYYYY, formatDateTimeDDMMYYYY } from "@/lib/utils";
 import { Download, ArrowUp, ArrowDown, AlertTriangle, Zap } from "lucide-react";
 
 const toDateInputValue = (value: Date) => value.toISOString().slice(0, 10);
@@ -154,7 +155,7 @@ export default function LogsPage() {
                                             <p className="text-sm font-semibold text-amber-900">Previous month logs retention</p>
                                             <p className="text-sm text-amber-800">{retentionStatus.warning_message}</p>
                                             <p className="text-xs text-amber-700">
-                                                Period: {retentionStatus.period_start} to {retentionStatus.period_end}
+                                                Period: {formatDateDDMMYYYY(retentionStatus.period_start)} to {formatDateDDMMYYYY(retentionStatus.period_end)}
                                             </p>
                                         </div>
                                     </div>
@@ -239,7 +240,7 @@ export default function LogsPage() {
                                                         <span>{log.previous_quantity} → {log.new_quantity}</span>
                                                     </div>
                                                     {log.remarks && <div className="text-sm text-gray-400">{log.remarks}</div>}
-                                                    <div className="text-xs text-gray-400">{new Date(log.timestamp).toLocaleString()}</div>
+                                                    <div className="text-xs text-gray-400">{formatDateTimeDDMMYYYY(log.timestamp)}</div>
                                                 </div>
                                             ))}
                                         </div>
@@ -262,7 +263,7 @@ export default function LogsPage() {
                                                 {logs.map((log) => (
                                                     <TableRow key={log.id}>
                                                         <TableCell className="whitespace-nowrap">
-                                                            {new Date(log.timestamp).toLocaleString()}
+                                                            {formatDateTimeDDMMYYYY(log.timestamp)}
                                                         </TableCell>
                                                         <TableCell>
                                                             <div className="flex items-center gap-2">
@@ -300,7 +301,7 @@ export default function LogsPage() {
                                 <DialogHeader>
                                     <DialogTitle>Last Day To Export Logs</DialogTitle>
                                     <DialogDescription>
-                                        This is the final day to export {retentionStatus?.period_start} to {retentionStatus?.period_end} stock logs.
+                                        This is the final day to export {formatDateDDMMYYYY(retentionStatus?.period_start)} to {formatDateDDMMYYYY(retentionStatus?.period_end)} stock logs.
                                         Please export now before archival and deletion workflow begins.
                                     </DialogDescription>
                                 </DialogHeader>

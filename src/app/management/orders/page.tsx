@@ -8,6 +8,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatDateDDMMYYYY } from "@/lib/utils";
 import { ArrowUpRight, CircleDollarSign, ClipboardList, Clock3, PackageCheck, Wallet } from "lucide-react";
 
 interface Order {
@@ -66,11 +67,7 @@ function formatCurrency(amount: number) {
 }
 
 function formatDate(dateString: string) {
-    return new Date(dateString).toLocaleDateString("en-IN", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-    });
+    return formatDateDDMMYYYY(dateString);
 
 }
 

@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatDateDDMMYYYY } from "@/lib/utils";
 import {
     Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
@@ -34,9 +35,7 @@ function formatCurrency(amount: number) {
 }
 
 function formatDate(dateString: string) {
-    return new Date(dateString).toLocaleDateString("en-IN", {
-        day: "2-digit", month: "short", year: "numeric",
-    });
+    return formatDateDDMMYYYY(dateString);
 }
 
 function formatPhone(phone: string | null) {

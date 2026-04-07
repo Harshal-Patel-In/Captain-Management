@@ -16,7 +16,7 @@ import { api } from "@/lib/api";
 import { useRealtime } from "@/context/realtime";
 import { InventoryItem, LogsRetentionStatus, ProductMonthlySummary } from "@/lib/types";
 import { RealtimeEvent } from "@/lib/realtime";
-import { formatQuantity } from "@/lib/utils";
+import { formatDateDDMMYYYY, formatDateTimeDDMMYYYY, formatQuantity } from "@/lib/utils";
 import { AlertTriangle, ArrowDownCircle, ArrowUpCircle, ArrowUpDown, Download, Loader2, X, Zap } from "lucide-react";
 
 const TOOLTIP_AUTO_HIDE_MS = 6000;
@@ -293,7 +293,7 @@ export default function InventoryPage() {
                                             <p className="text-sm font-semibold text-amber-900">Export previous month stock logs</p>
                                             <p className="text-sm text-amber-800">{retentionStatus.warning_message}</p>
                                             <p className="text-xs text-amber-700">
-                                                Period: {retentionStatus.period_start} to {retentionStatus.period_end}
+                                                Period: {formatDateDDMMYYYY(retentionStatus.period_start)} to {formatDateDDMMYYYY(retentionStatus.period_end)}
                                             </p>
                                         </div>
                                     </div>
@@ -369,7 +369,7 @@ export default function InventoryPage() {
                                                     </div>
                                                     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
                                                         <span className="font-mono">{item.qr_code_value}</span>
-                                                        <span>{new Date(item.last_updated).toLocaleString()}</span>
+                                                        <span>{formatDateTimeDDMMYYYY(item.last_updated)}</span>
                                                     </div>
                                                     <div className="mt-3">
                                                         <Button
@@ -429,7 +429,7 @@ export default function InventoryPage() {
                                                             {formatQuantity(item.quantity)} <span className="text-sm text-gray-600">{item.unit_label}</span>
                                                         </span>
                                                     </TableCell>
-                                                    <TableCell>{new Date(item.last_updated).toLocaleString()}</TableCell>
+                                                    <TableCell>{formatDateTimeDDMMYYYY(item.last_updated)}</TableCell>
                                                     <TableCell className="text-right">
                                                         <Button
                                                             size="sm"
@@ -474,7 +474,7 @@ export default function InventoryPage() {
                                     ) : monthlySummaryByProduct[activeTooltipProductId] ? (
                                         <div className="space-y-1">
                                             <div className="text-[11px] text-gray-500 mb-1">
-                                                Period: {new Date(monthlySummaryByProduct[activeTooltipProductId].period_start).toLocaleDateString()} to {new Date(monthlySummaryByProduct[activeTooltipProductId].period_end).toLocaleDateString()}
+                                                Period: {formatDateDDMMYYYY(monthlySummaryByProduct[activeTooltipProductId].period_start)} to {formatDateDDMMYYYY(monthlySummaryByProduct[activeTooltipProductId].period_end)}
                                             </div>
                                             <div className="flex items-center justify-between gap-4">
                                                 <span className="text-gray-600">Stock In</span>
@@ -505,7 +505,7 @@ export default function InventoryPage() {
                                 <DialogHeader>
                                     <DialogTitle>Last Day To Export Stock Logs</DialogTitle>
                                     <DialogDescription>
-                                        This is the final day to export {retentionStatus?.period_start} to {retentionStatus?.period_end} stock logs.
+                                        This is the final day to export {formatDateDDMMYYYY(retentionStatus?.period_start)} to {formatDateDDMMYYYY(retentionStatus?.period_end)} stock logs.
                                         Please export now before archival and deletion workflow starts.
                                     </DialogDescription>
                                 </DialogHeader>

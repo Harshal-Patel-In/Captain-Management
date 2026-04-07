@@ -14,6 +14,7 @@ import {
     Search, Send, ArrowLeft, Pin, PinOff, MessageSquare, Tag, Percent, Mail,
     CheckCheck, Check, Phone, MailIcon, Plus, Reply, X, Smile,
 } from "lucide-react";
+import { formatDateDDMMYYYY } from "@/lib/utils";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -31,12 +32,8 @@ function formatTime(dateString: string) {
 
     if (diffDays === 0) {
         return d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
-    } else if (diffDays === 1) {
-        return "Yesterday";
-    } else if (diffDays < 7) {
-        return d.toLocaleDateString("en-IN", { weekday: "short" });
     }
-    return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
+    return formatDateDDMMYYYY(d);
 }
 
 function formatMessageTime(dateString: string) {
@@ -70,14 +67,22 @@ function NewChatDialog({
     const [search, setSearch] = useState("");
     const [loading, setLoading] = useState(false);
 
+    const loadUsers = useCallback(async () => {
+        setLoading(true);
+        try {
+            const results = await api.getAvailableUsers(search || undefined);
+            setUsers(results);
+        } catch (error) {
+            console.error(error);
+        } finally {
+            setLoading(false);
+        }
+    }, [search]);
+
     useEffect(() => {
         if (!open) return;
-        setLoading(true);
-        api.getAvailableUsers(search || undefined)
-            .then(setUsers)
-            .catch(console.error)
-            .finally(() => setLoading(false));
-    }, [open, search]);
+        void loadUsers();
+    }, [open, loadUsers]);
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -572,7 +577,7 @@ function ChatArea({
     const groupedMessages: { date: string; messages: ChatMessage[] }[] = [];
     let lastDate = "";
     for (const msg of messages) {
-        const date = new Date(msg.created_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+        const date = formatDateDDMMYYYY(msg.created_at);
         if (date !== lastDate) {
             groupedMessages.push({ date, messages: [] });
             lastDate = date;
