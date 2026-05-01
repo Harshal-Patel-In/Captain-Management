@@ -308,6 +308,13 @@ class APIClient {
         return this.request<RecipeResponse>(`/production/recipes/${productId}`);
     }
 
+    async saveRecipe(productId: number, items: { ingredient_id: number; quantity: number }[]): Promise<RecipeResponse> {
+        return this.request<RecipeResponse>(`/production/recipes/${productId}`, {
+            method: "PUT",
+            body: JSON.stringify(items),
+        });
+    }
+
     async executeProduction(data: { product_id: number; quantity: number; custom_recipe?: any[]; persist_custom_recipe?: boolean }): Promise<any> {
         return this.request<any>('/production/production/execute', {
             method: 'POST',

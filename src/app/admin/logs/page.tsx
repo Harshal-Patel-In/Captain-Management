@@ -16,7 +16,13 @@ import { LogsRetentionStatus, StockLog } from "@/lib/types";
 import { formatDateDDMMYYYY, formatDateTimeDDMMYYYY } from "@/lib/utils";
 import { Download, ArrowUp, ArrowDown, AlertTriangle, Zap } from "lucide-react";
 
-const toDateInputValue = (value: Date) => value.toISOString().slice(0, 10);
+const toDateInputValue = (value: Date) => {
+    // Use local date components to avoid UTC shift causing off-by-one days
+    const y = value.getFullYear();
+    const m = String(value.getMonth() + 1).padStart(2, "0");
+    const d = String(value.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+};
 
 const getCurrentMonthRange = () => {
     const now = new Date();

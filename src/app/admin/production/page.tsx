@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { ProtectedRoute } from "@/components/layout/ProtectedRoute";
 import { Header } from "@/components/layout/Header";
 import { PageTransition } from "@/components/layout/PageTransition";
@@ -9,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
@@ -98,7 +100,23 @@ function getDraftKey(productId: number, ingredientId: number): string {
     return `${productId}-${ingredientId}`;
 }
 
+function normalizeRecipeQuantity(value: number): number {
+    return Number(value.toFixed(3));
+}
+
+function buildRecipeSignature(items: RecipeLineItem[], batchQty: number, overrides: Record<number, number>): string {
+    return items
+        .map((line) => {
+            const requiredQty = overrides[line.ingredient_id] ?? line.perUnitQty * batchQty;
+            const perUnitQty = batchQty > 0 ? requiredQty / batchQty : line.perUnitQty;
+            return `${line.ingredient_id}:${normalizeRecipeQuantity(perUnitQty)}`;
+        })
+        .sort()
+        .join("|");
+}
+
 export default function ProductionPage() {
+    const router = useRouter();
     const [products, setProducts] = useState<Product[]>([]);
     const [inventoryByProductId, setInventoryByProductId] = useState<Record<number, number>>({});
     const [catalogLoading, setCatalogLoading] = useState(true);
@@ -111,6 +129,11 @@ export default function ProductionPage() {
     const [plans, setPlans] = useState<Record<number, ProductPlan>>({});
     const [activeProductId, setActiveProductId] = useState<number | null>(null);
     const [recipeLoading, setRecipeLoading] = useState(false);
+    const [batchQtyDrafts, setBatchQtyDrafts] = useState<Record<number, string>>({});
+    const [savedRecipeSignatures, setSavedRecipeSignatures] = useState<Record<number, string>>({});
+    const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
+    const [pendingNavigationHref, setPendingNavigationHref] = useState<string | null>(null);
+    const [savingRecipes, setSavingRecipes] = useState(false);
 
     const [newIngredientId, setNewIngredientId] = useState<string>("");
     const [newIngredientQty, setNewIngredientQty] = useState<number | string>(0);
@@ -285,6 +308,7 @@ export default function ProductionPage() {
 
             setPlans((previous) => {
                 const nextPlans = { ...previous };
+                const nextSavedSignatures: Record<number, string> = {};
 
                 results.forEach((result) => {
                     const existingPlan = nextPlans[result.productId];
@@ -307,7 +331,14 @@ export default function ProductionPage() {
                         recipeLoaded: true,
                         recipeError: result.error,
                     };
+
+                    nextSavedSignatures[result.productId] = buildRecipeSignature(mappedItems, 1, {});
                 });
+
+                setSavedRecipeSignatures((previous) => ({
+                    ...previous,
+                    ...nextSavedSignatures,
+                }));
 
                 return nextPlans;
             });
@@ -375,13 +406,7 @@ export default function ProductionPage() {
             return [] as RecipeLineItem[];
         }
 
-        if (activePlan.ingredientFilter === ALL_CATEGORY_VALUE) {
-            return activePlan.recipeItems;
-        }
-
-        return activePlan.recipeItems.filter((item) => {
-            return normalizeCategoryKey(item.ingredient?.category) === activePlan.ingredientFilter;
-        });
+        return activePlan.recipeItems;
     }, [activePlan]);
 
     const activeAvailableIngredients = useMemo(() => {
@@ -441,28 +466,58 @@ export default function ProductionPage() {
             .map(([value, label]) => ({ value, label }));
     }, [activeAvailableIngredients, activePlan]);
 
-    const handleBatchInputChange = (productId: number, rawValue: string) => {
-        if (rawValue === "") {
+    const updatePlanBatchQty = (productId: number, nextQty: number) => {
+        updatePlan(productId, (plan) => {
+            const prevQty = plan.batchQty;
+            const newQty = nextQty;
+
+            // If previous qty is valid and different, scale overrides proportionally
+            const nextOverrides: Record<number, number> = { ...plan.overrides };
+            if (prevQty > 0 && Math.abs(prevQty - newQty) > 1e-9) {
+                Object.keys(nextOverrides).forEach((k) => {
+                    const id = Number(k);
+                    const prevOverride = plan.overrides[id];
+                    if (prevOverride === undefined) return;
+                    const perUnit = prevOverride / prevQty;
+                    nextOverrides[id] = normalizeQuantity(perUnit * newQty, getStep(plan.product));
+                });
+            }
+
+            return {
+                ...plan,
+                batchQty: newQty,
+                overrides: nextOverrides,
+            };
+        });
+    };
+
+    const handleBatchDraftChange = (productId: number, rawValue: string) => {
+        setBatchQtyDrafts((previous) => ({ ...previous, [productId]: rawValue }));
+    };
+
+    const handleBatchDraftBlur = (productId: number) => {
+        const raw = batchQtyDrafts[productId];
+        setBatchQtyDrafts((previous) => {
+            const next = { ...previous };
+            delete next[productId];
+            return next;
+        });
+
+        if (raw === undefined || raw.trim() === "") {
             return;
         }
 
         const currentPlan = plans[productId];
-        if (!currentPlan) {
-            return;
-        }
+        if (!currentPlan) return;
 
-        const parsed = Number(rawValue);
+        const parsed = Number(raw);
         if (!Number.isFinite(parsed) || parsed <= 0) {
             return;
         }
 
         const stepValue = getStep(currentPlan.product);
         const normalized = normalizeQuantity(parsed, stepValue);
-
-        updatePlan(productId, (plan) => ({
-            ...plan,
-            batchQty: normalized,
-        }));
+        updatePlanBatchQty(productId, normalized);
     };
 
     const adjustBatchQty = (productId: number, direction: -1 | 1) => {
@@ -476,10 +531,8 @@ export default function ProductionPage() {
         const candidate = currentPlan.batchQty + direction * buttonStep;
         const normalized = normalizeQuantity(Math.max(inputStep, candidate), inputStep);
 
-        updatePlan(productId, (plan) => ({
-            ...plan,
-            batchQty: normalized,
-        }));
+        // Use updatePlanBatchQty so overrides scale with batch change
+        updatePlanBatchQty(productId, normalized);
     };
 
     const handleIngredientFilterChange = (filter: string) => {
@@ -549,6 +602,11 @@ export default function ProductionPage() {
             recipeError: null,
         }));
 
+        updatePlan(activePlan.product.id, (plan) => ({
+            ...plan,
+            ingredientFilter: ALL_CATEGORY_VALUE,
+        }));
+
         setNewIngredientId("");
         setNewIngredientQty(0);
     };
@@ -562,6 +620,7 @@ export default function ProductionPage() {
                 ...plan,
                 recipeItems: plan.recipeItems.filter((item) => item.ingredient_id !== ingredientId),
                 overrides: nextOverrides,
+                ingredientFilter: ALL_CATEGORY_VALUE,
             };
         });
 
@@ -668,6 +727,139 @@ export default function ProductionPage() {
         setIngredientOverride(productId, line, parsed);
     };
 
+    const dirtyProductIds = useMemo(() => {
+        return selectedProductIds.filter((productId) => {
+            const plan = plans[productId];
+            if (!plan) {
+                return false;
+            }
+
+            const currentSignature = buildRecipeSignature(plan.recipeItems, plan.batchQty, plan.overrides);
+            const savedSignature = savedRecipeSignatures[productId] ?? "";
+            return currentSignature !== savedSignature;
+        });
+    }, [plans, savedRecipeSignatures, selectedProductIds]);
+
+    const hasUnsavedRecipeChanges = dirtyProductIds.length > 0;
+
+    const saveDirtyRecipes = async (productIds: number[] = dirtyProductIds) => {
+        if (productIds.length === 0) {
+            return true;
+        }
+
+        setSavingRecipes(true);
+        setStatus("loading");
+        setErrorMessage("");
+        setSuccessMessage("");
+
+        try {
+            const savedIds: number[] = [];
+
+            for (const productId of productIds) {
+                const plan = plans[productId];
+                if (!plan) {
+                    continue;
+                }
+
+                const recipeItems = plan.recipeItems.map((line) => ({
+                    ingredient_id: line.ingredient_id,
+                    quantity: normalizeRecipeQuantity((getRequiredQty(plan, line) / plan.batchQty)),
+                }));
+
+                await api.saveRecipe(productId, recipeItems);
+                savedIds.push(productId);
+            }
+
+            if (savedIds.length > 0) {
+                setSavedRecipeSignatures((previous) => {
+                    const next = { ...previous };
+                    savedIds.forEach((productId) => {
+                        const plan = plans[productId];
+                        if (!plan) {
+                            return;
+                        }
+                        next[productId] = buildRecipeSignature(plan.recipeItems, plan.batchQty, plan.overrides);
+                    });
+                    return next;
+                });
+            }
+
+            setStatus("success");
+            setSuccessMessage(savedIds.length === 1 ? "Recipe saved." : `Saved ${savedIds.length} recipes.`);
+            return true;
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "Failed to save recipe changes.";
+            setStatus("error");
+            setErrorMessage(message);
+            return false;
+        } finally {
+            setSavingRecipes(false);
+        }
+    };
+
+    useEffect(() => {
+        const handleLinkClick = (event: MouseEvent) => {
+            if (!hasUnsavedRecipeChanges) {
+                return;
+            }
+
+            if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+                return;
+            }
+
+            const target = event.target as HTMLElement | null;
+            const anchor = target?.closest("a[href]") as HTMLAnchorElement | null;
+            if (!anchor || anchor.target === "_blank" || anchor.hasAttribute("download")) {
+                return;
+            }
+
+            const url = new URL(anchor.href, window.location.href);
+            if (url.origin !== window.location.origin) {
+                return;
+            }
+
+            event.preventDefault();
+            setPendingNavigationHref(`${url.pathname}${url.search}${url.hash}`);
+            setLeaveDialogOpen(true);
+        };
+
+        const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+            if (!hasUnsavedRecipeChanges) {
+                return;
+            }
+
+            event.preventDefault();
+            event.returnValue = "";
+        };
+
+        window.addEventListener("click", handleLinkClick, true);
+        window.addEventListener("beforeunload", handleBeforeUnload);
+
+        return () => {
+            window.removeEventListener("click", handleLinkClick, true);
+            window.removeEventListener("beforeunload", handleBeforeUnload);
+        };
+    }, [hasUnsavedRecipeChanges]);
+
+    const handleNavigateAway = async (shouldSave: boolean) => {
+        const nextHref = pendingNavigationHref;
+        setLeaveDialogOpen(false);
+        setPendingNavigationHref(null);
+
+        if (shouldSave) {
+            const saved = await saveDirtyRecipes();
+            if (!saved) {
+                setPendingNavigationHref(nextHref);
+                setLeaveDialogOpen(true);
+                return;
+            }
+        }
+
+        if (nextHref) {
+            router.push(nextHref);
+        }
+    };
+
     const moveToNextProduct = () => {
         if (!activeProductId) {
             return;
@@ -752,7 +944,8 @@ export default function ProductionPage() {
                     product_id: plan.product.id,
                     quantity: plan.batchQty,
                     custom_recipe: customRecipe,
-                    persist_custom_recipe: false,
+                    // Persist custom recipe by default so saved recipes are available later
+                    persist_custom_recipe: true,
                 });
 
                 successCount += 1;
@@ -763,6 +956,18 @@ export default function ProductionPage() {
         }
 
         if (successCount > 0) {
+            setSavedRecipeSignatures((previous) => {
+                const next = { ...previous };
+                selectedProductIds.forEach((productId) => {
+                    const plan = plans[productId];
+                    if (!plan) {
+                        return;
+                    }
+
+                    next[productId] = buildRecipeSignature(plan.recipeItems, plan.batchQty, plan.overrides);
+                });
+                return next;
+            });
             await loadCatalog();
         }
 
@@ -979,8 +1184,9 @@ export default function ProductionPage() {
                                                                 type="number"
                                                                 min={isPieceUnit(activePlan.product) ? "1" : "0.001"}
                                                                 step={isPieceUnit(activePlan.product) ? "1" : "0.001"}
-                                                                value={activePlan.batchQty}
-                                                                onChange={(event) => handleBatchInputChange(activePlan.product.id, event.target.value)}
+                                                                value={batchQtyDrafts[activePlan.product.id] ?? String(activePlan.batchQty)}
+                                                                onChange={(event) => handleBatchDraftChange(activePlan.product.id, event.target.value)}
+                                                                onBlur={() => handleBatchDraftBlur(activePlan.product.id)}
                                                                 className="h-11 text-center text-lg font-semibold"
                                                             />
                                                             <Button
@@ -1064,7 +1270,7 @@ export default function ProductionPage() {
                                                         <div className="divide-y divide-gray-100 md:hidden">
                                                             {activeRows.length === 0 && (
                                                                 <p className="py-6 text-center text-sm text-gray-500">
-                                                                    No ingredients in this filter.
+                                                                    No ingredients added yet.
                                                                 </p>
                                                             )}
 
@@ -1210,7 +1416,7 @@ export default function ProductionPage() {
                                                                     {activeRows.length === 0 && (
                                                                         <TableRow>
                                                                             <TableCell colSpan={4} className="py-6 text-center text-sm text-gray-500">
-                                                                                No ingredients in this filter.
+                                                                                No ingredients added yet.
                                                                             </TableCell>
                                                                         </TableRow>
                                                                     )}
@@ -1433,6 +1639,44 @@ export default function ProductionPage() {
                                 </Card>
                             </div>
                         )}
+
+                        <Dialog open={leaveDialogOpen} onOpenChange={(open) => !open && setLeaveDialogOpen(false)}>
+                            <DialogContent className="sm:max-w-lg">
+                                <DialogHeader>
+                                    <DialogTitle>Save recipe changes?</DialogTitle>
+                                    <DialogDescription>
+                                        You changed ingredient quantities or added ingredients. Do you want to save the changed recipe before leaving this page?
+                                    </DialogDescription>
+                                </DialogHeader>
+
+                                <DialogFooter className="gap-2 sm:justify-end">
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={() => handleNavigateAway(false)}
+                                        disabled={savingRecipes}
+                                    >
+                                        Leave without saving
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={() => setLeaveDialogOpen(false)}
+                                        disabled={savingRecipes}
+                                    >
+                                        Stay
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        className="bg-black text-white hover:bg-black/90"
+                                        onClick={() => handleNavigateAway(true)}
+                                        disabled={savingRecipes}
+                                    >
+                                        {savingRecipes ? "Saving..." : "Save and leave"}
+                                    </Button>
+                                </DialogFooter>
+                            </DialogContent>
+                        </Dialog>
                     </PageTransition>
                 </main>
             </div>
